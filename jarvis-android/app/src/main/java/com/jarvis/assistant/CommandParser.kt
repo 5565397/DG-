@@ -216,8 +216,8 @@ object CommandParser {
         // ----- Calls, SMS, WhatsApp -----
         r = m("(?:send )?(?:a )?whats ?app(?: message)?(?: to)? (.+?) (?:saying|that says|that|message|and say|to say) (.+)")
         if (r != null) return Action.WhatsApp(r.groupValues[1], r.groupValues[2])
-        r = m("(?:send (?:a |an )?(?:message|text|sms|text message) to|text|message|sms|tell (?!me )(?!us ))(.+?) (?:saying|that says|that|to say) (.+)")
-        if (r != null) return Action.Sms(r.groupValues[1], r.groupValues[2])
+        r = m("(?:send (?:a |an )?(?:message|text|sms|text message) to|text|message|sms|tell(?! me )(?! us )) (.+?) (?:saying|that says|that|to say) (.+)")
+        if (r != null) return Action.Sms(r.groupValues[1].trim(), r.groupValues[2].trim())
         r = m("(?:call|dial|phone|ring|make a call to|give a call to) (.+?)(?: now| please| for me)?")
         if (r != null) return Action.Call(r.groupValues[1])
 
