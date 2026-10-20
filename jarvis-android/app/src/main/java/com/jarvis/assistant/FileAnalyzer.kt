@@ -38,7 +38,9 @@ object FileAnalyzer {
         val images: List<String> = emptyList(),
         val note: String = "",
         val error: String? = null,
-        val truncated: Boolean = false
+        val truncated: Boolean = false,
+        /** What the phone itself read from the pictures (text + objects), without any AI. */
+        val seen: String = ""
     )
 
     private const val MAX_BYTES = 40L * 1024 * 1024
@@ -95,8 +97,9 @@ object FileAnalyzer {
         return try {
             when (a.kind) {
                 Kind.IMAGE -> {
-                    val img = imageFile(file) ?: return Prepared(error = "I couldn't open that picture.")
-                    Prepared(images = listOf(img), note = "Picture")
+                    val bmp = decode(file) ?: return Prepared(error = "I couldn't open that picture.")
+                    val seen = insight(bmp)
+                    Prepared(images = listOf(toJpeg(bmp)), note = "Picture", seen = seen)
                 }
                 Kind.PDF -> pdf(context, file, maxChars)
                 Kind.DOCUMENT -> limit(officeText(file, a.name), maxChars, "Document")
@@ -126,17 +129,24 @@ object FileAnalyzer {
 
     // ---------------------------------------------------------------- images
 
-    /** Thumbnail-safe decode, scaled to at most 1280 px, as base64 JPEG. */
-    fun imageFile(file: File): String? {
+    /** Thumbnail-safe decode of a picture file. */
+    private fun decode(file: File): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, bounds)
         if (bounds.outWidth <= 0) return null
         var sample = 1
         while (bounds.outWidth / sample > 2560 || bounds.outHeight / sample > 2560) sample *= 2
-        val bmp = BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
-        return toJpeg(bmp)
+        return BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
+    /** On-device text and object reading; empty if nothing was found or ML Kit isn't available. */
+    private fun insight(bmp: Bitmap): String = try {
+        ImageInsight.read(bmp).describe()
+    } catch (e: Throwable) {
+        ""
+    }
+
+    /** Scaled to at most 1280 px, as base64 JPEG. Recycles [source]. */
     private fun toJpeg(source: Bitmap): String {
         val scale = minOf(1f, 1280f / maxOf(source.width, source.height))
         val bmp = if (scale < 1f) Bitmap.createScaledBitmap(source, (source.width * scale).toInt(), (source.height * scale).toInt(), true) else source
@@ -160,6 +170,7 @@ object FileAnalyzer {
         if (text.lines().drop(1).joinToString("").isNotBlank()) return limit(text, maxChars, "PDF")
         // Scanned PDF (pictures of pages): send the first pages as images instead.
         val pages = ArrayList<String>()
+        val seen = StringBuilder()
         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
             PdfRenderer(fd).use { renderer ->
                 for (i in 0 until minOf(renderer.pageCount, 3)) {
@@ -168,12 +179,13 @@ object FileAnalyzer {
                         val bmp = Bitmap.createBitmap((page.width * scale).toInt(), (page.height * scale).toInt(), Bitmap.Config.ARGB_8888)
                         bmp.eraseColor(Color.WHITE)
                         page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        insight(bmp).takeIf { it.isNotBlank() }?.let { seen.append("Page ${i + 1}:\n").append(it).append("\n\n") }
                         pages.add(toJpeg(bmp))
                     }
                 }
             }
         }
-        return Prepared(images = pages, note = "Scanned PDF (first ${pages.size} pages)")
+        return Prepared(images = pages, note = "Scanned PDF (first ${pages.size} pages)", seen = seen.toString().trim().take(maxChars))
     }
 
     // ---------------------------------------------------------------- Office files
@@ -220,6 +232,7 @@ object FileAnalyzer {
 
     private fun video(file: File, maxChars: Int, groq: GroqClient?): Prepared {
         val frames = ArrayList<String>()
+        val seen = StringBuilder()
         var seconds = 0L
         val mmr = MediaMetadataRetriever()
         try {
@@ -229,6 +242,7 @@ object FileAnalyzer {
             // Four frames spread across the video.
             for (f in listOf(0.1, 0.35, 0.6, 0.85)) {
                 val bmp = mmr.getFrameAtTime((ms * f * 1000).toLong(), MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: continue
+                insight(bmp).takeIf { it.isNotBlank() }?.let { seen.append("Frame ${frames.size + 1}:\n").append(it).append("\n\n") }
                 frames.add(toJpeg(bmp))
             }
         } finally {
@@ -245,6 +259,6 @@ object FileAnalyzer {
         val text = "Video, about $seconds seconds long. ${frames.size} frames from it are attached in order." +
             if (transcript.isNotBlank()) "\nTranscript of what is said in the video:\n$transcript" else "\n(No speech transcript available.)"
         if (frames.isEmpty() && transcript.isBlank()) return Prepared(error = "I couldn't read that video.")
-        return Prepared(text = text.take(maxChars), images = frames, note = "Video", truncated = text.length > maxChars)
+        return Prepared(text = text.take(maxChars), images = frames, note = "Video", truncated = text.length > maxChars, seen = seen.toString().trim())
     }
 }

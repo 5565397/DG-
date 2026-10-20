@@ -75,6 +75,32 @@ class UrduOfflineTest {
         assertEquals(Action.Sms("ali", ""), ur("ali ko msg kro"))
     }
 
+    @Test fun whatsappMessageTextBeforeVerb() {
+        // Exactly as typed in the app: quotes, "bejho", text before "ka message".
+        val typed = "WhatsApp open kr k \"b ali\" ko \"hello\" ka message bejho"
+        assertEquals(Action.WhatsApp("b ali", "hello"), ur(typed))
+        assertEquals(Action.WhatsApp("b ali", "hello"), CommandParser.parse(typed))
+        assertEquals(Action.WhatsApp("ali", "salam"), ur("whatsapp ko open karo aur ali ko salam ka msg bhejo"))
+        assertEquals(Action.WhatsApp("ali", "kal milte hain"), ur("ali ko whatsapp par kal milte hain ka message bhej do"))
+        assertEquals(Action.WhatsApp("ali", "main aa raha hun"), ur("ali ko whatsapp par bol do ke main aa raha hun"))
+        assertEquals(Action.WhatsApp("ali", "hello"), CommandParser.parse("whatsapp ko open kar ke ali ko message karo ke hello"))
+        assertEquals(Action.WhatsApp("علی", "ہیلو"), ur("واٹس ایپ کھول کر علی کو ہیلو کا میسج بھیجو"))
+        assertEquals(Action.WhatsApp("अली", "हेलो"), ur("व्हाट्सएप खोल कर अली को हेलो का मैसेज भेजो"))
+    }
+
+    @Test fun englishWhatsappNameStaysShort() {
+        assertEquals(Action.WhatsApp("ali", "hello"), CommandParser.parse("send a whatsapp message to ali saying hello"))
+        assertEquals(Action.WhatsApp("b ali", "hi there"), CommandParser.parse("whatsapp b ali saying hi there"))
+    }
+
+    @Test fun contactNameIsNotMatchedInsideAWord() {
+        val contacts = listOf("AdXalive Yt", "Ali Raza", "Alina", "B Ali")
+        assertEquals("B Ali", Translit.bestName("b ali", contacts, { it }))
+        assertEquals("Ali Raza", Translit.bestName("ali", contacts, { it }))
+        assertNull(Translit.bestName("ali", listOf("AdXalive Yt"), { it }))
+        assertEquals("Ali Raza", Translit.bestName("علی", listOf("AdXalive Yt", "Ali Raza"), { it }))
+    }
+
     @Test fun whatsappHowRecognizersSpellIt() {
         // Google often writes WhatsApp as "واٹس اپ" / "व्हाट्सअप" — must still be WhatsApp, never SMS.
         assertEquals(Action.WhatsApp("علی", "میں آ رہا ہوں"), ur("واٹس اپ کھول کر علی کو میسج کرو کہ میں آ رہا ہوں"))

@@ -197,14 +197,22 @@ object Hindustani {
 
     // ---------------------------------------------------------------- main entry
 
+    /**
+     * Only the "Ali ko … message karo" family, for Roman Urdu typed while Voxa thinks the user speaks English.
+     * Needs "ko", which English never uses, so it can't hijack an English command.
+     */
+    fun messageToEnglish(input: String): String? = messageCommand(clean(input))
+
+    private fun clean(input: String) = romanFix(
+        nfc(input).lowercase(Locale.ROOT)
+            .replace(Regex("[\\p{P}&&[^'&+:%-]]"), " ") // drop punctuation like । ؟ ، .
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    )
+
     /** Returns an English command, or null if this isn't one of the known Urdu/Hindi commands. */
     fun toEnglish(input: String): String? {
-        val t = romanFix(
-            nfc(input).lowercase(Locale.ROOT)
-                .replace(Regex("[\\p{P}&&[^'&+:%-]]"), " ") // drop punctuation like । ؟ ، .
-                .replace(Regex("\\s+"), " ")
-                .trim()
-        )
+        val t = clean(input)
         if (t.isEmpty()) return null
         fun has(words: List<String>) = words.any { containsWord(t, it) }
         fun m(p: String) = rx(p).matchEntire(t)
@@ -301,7 +309,12 @@ object Hindustani {
     // ---------------------------------------------------------------- messages
 
     /** "whatsapp khol kar" / "واٹس ایپ کھول کر" / "व्हाट्सएप खोल कर" before the actual request. */
-    private val openFirst ="(?:(?:$whatsapp) (?:open|khol|kholo|کھول|کھولو|اوپن|खोल|खोलो|ओपन)(?: (?:kar|karo|کر|کرو|कर|करो))?(?: (?:ke|kar|aur|کے|کر|اور|के|कर|और))? )?"
+    private val openFirst =
+        "(?:(?:$whatsapp)(?: (?:$to))? (?:open|khol|kholo|کھول|کھولو|اوپن|खोल|खोलो|ओपन)(?: (?:kar|karo|کر|کرو|कर|करो))?(?: (?:ke|kar|aur|کے|کر|اور|के|कर|और))? |" +
+        "(?:$whatsapp) (?:$onWord) )?"
+
+    /** "bol do ke …", "keh do ke …", "bata do ke …" — another way to give the message text. */
+    private const val tellVerbs = "बोल दो|बोलो|कह दो|कहो|बता दो|بول دو|بولو|کہہ دو|کہو|بتا دو|bol do|bolo|keh do|kaho|kah do|bata do"
 
     /**
      * "Ali ko message karo ke main aa raha hoon", "WhatsApp khol kar Ali ko message karo",
@@ -310,14 +323,20 @@ object Hindustani {
      */
     private fun messageCommand(t: String): String? {
         val r = rx(
-            "$openFirst(.+?) (?:$to)(?: (?:$whatsapp))?(?: (?:$onWord))?(?: (?:$msgNoun))?(?: (?:$sendVerbs))?(?: (?:$that) (.+))?"
-        ).matchEntire(t) ?: return null
+            "$openFirst(.+?) (?:$to)(?: (?:$whatsapp))?(?: (?:$onWord))?(?: (?:$msgNoun))?(?: (?:$sendVerbs|$tellVerbs))?(?: (?:$that) (.+))?"
+        ).matchEntire(t)
+            // "Ali ko hello ka message bhejo" / "علی کو ہیلو کا میسج بھیجو" — the text comes before "ka message".
+            ?: rx(
+                "$openFirst(.+?) (?:$to)(?: (?:$whatsapp) (?:$onWord))? (.+?) (?:$ofWord)(?: (?:$whatsapp))? (?:$msgNoun) (?:$sendVerbs)"
+            ).matchEntire(t)
+            ?: return null
         val who = r.groupValues[1].trim()
         val body = r.groupValues[2].trim()
         val viaWhatsapp = rx("(?:^| )(?:$whatsapp)(?:$| )").containsMatchIn(t)
         val mentionsMessage = rx("(?:^| )(?:$msgNoun)(?:$| )").containsMatchIn(t)
         // Must actually be about messaging, and the name can't be a leftover verb.
-        if (!viaWhatsapp && !mentionsMessage) return null
+        val tells = rx("(?:^| )(?:$tellVerbs) (?:$that) ").containsMatchIn(t)
+        if (!viaWhatsapp && !mentionsMessage && !tells) return null
         if (!rx("(?:^| )(?:$sendVerbs)(?:$| )").containsMatchIn(t) && body.isEmpty() && !viaWhatsapp) return null
         if (who.isEmpty() || rx("(?:$whatsapp|$msgNoun)").matches(who)) return null
         return when {
@@ -340,7 +359,10 @@ object Hindustani {
         "kro" to "karo", "kr" to "kar", "ker" to "kar", "krdo" to "kar do", "kardo" to "kar do", "krdein" to "kar do", "krna" to "karna",
         "k" to "ke", "kay" to "ke", "kh" to "keh", "py" to "par", "pr" to "par", "pay" to "par",
         "msg" to "message", "mesg" to "message", "massage" to "message", "msj" to "message", "mesage" to "message", "messege" to "message",
-        "bhjo" to "bhejo", "bhejdo" to "bhej do", "bhjdo" to "bhej do",
+        "bhjo" to "bhejo", "bhejdo" to "bhej do", "bhjdo" to "bhej do", "bejho" to "bhejo", "bejo" to "bhejo", "bhijo" to "bhejo",
+        "bhejho" to "bhejo", "bhaijo" to "bhejo", "bhejain" to "bhejo", "bhejen" to "bhejo", "bej" to "bhej", "bejdo" to "bhej do",
+        "massege" to "message", "mesej" to "message", "mesij" to "message", "maseg" to "message",
+        "boldo" to "bol do", "kehdo" to "keh do", "kahdo" to "keh do", "batado" to "bata do",
         "whatsap" to "whatsapp", "watsapp" to "whatsapp", "watsap" to "whatsapp", "whatapp" to "whatsapp", "wtsp" to "whatsapp", "watsaap" to "whatsapp",
         "mujy" to "mujhe", "mujhy" to "mujhe", "mjhe" to "mujhe", "mujhay" to "mujhe",
         "hy" to "hai", "hay" to "hai", "he" to "hai", "kon" to "kaun", "kaon" to "kaun", "kia" to "kya",

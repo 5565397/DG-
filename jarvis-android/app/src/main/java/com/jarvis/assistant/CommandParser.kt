@@ -82,7 +82,7 @@ object CommandParser {
         .let { if (it == "please" || it == "voxa") "" else it }
 
     fun parse(input: String, nonEnglishMode: Boolean = false): Action {
-        val translated = if (nonEnglishMode || Hindustani.isNonLatin(input)) Hindustani.toEnglish(input) else null
+        val translated = if (nonEnglishMode || Hindustani.isNonLatin(input)) Hindustani.toEnglish(input) else Hindustani.messageToEnglish(input)
         if (translated == null && Hindustani.isNonLatin(input)) return Action.Ask(input.trim())
         // Roman Urdu/Hindi questions ("elon musk kon hai") are for the AI, not phone commands.
         if (translated == null && nonEnglishMode && Hindustani.isQuestion(input)) return Action.Question(input.trim())
@@ -216,7 +216,8 @@ object CommandParser {
         if (r != null) return Action.Timer(seconds(r.groupValues[1], r.groupValues[2]), null)
 
         // ----- Calls, SMS, WhatsApp -----
-        r = m("(?:send )?(?:a )?whats ?app(?: message)?(?: to)? (.+?) (?:saying|that says|that|message|and say|to say) (.+)")
+        // The name is at most four words, so "message" inside a long sentence can't swallow it.
+        r = m("(?:send )?(?:a )?whats ?app(?: message)?(?: to)? ((?:\\S+ ){0,3}?\\S+) (?:saying|that says|that|and say|to say|message) (.+)")
         if (r != null) return Action.WhatsApp(r.groupValues[1].trim(), r.groupValues[2].trim())
         r = m("open whats ?app and (?:send a message to|send a message|message|text|write to|tell) (.+?) (?:saying|that says|that|to say) (.+)")
         if (r != null) return Action.WhatsApp(r.groupValues[1].trim(), r.groupValues[2].trim())
@@ -225,7 +226,7 @@ object CommandParser {
         if (r != null) return Action.WhatsApp(r.groupValues.drop(1).first { it.isNotEmpty() }.trim(), "")
         r = m("compose (?:a |an )?(?:message|text|sms) (?:to|for) (.+)")
         if (r != null) return Action.Sms(r.groupValues[1].trim(), "")
-        r = m("(?:send (?:a |an )?(?:message|text|sms|text message) to|text|message|sms|tell(?! me )(?! us )) (.+?) (?:saying|that says|that|to say) (.+)")
+        r = m("(?:send (?:a |an )?(?:message|text|sms|text message) to|text|message|sms|tell(?! me )(?! us )) ((?:\\S+ ){0,3}?\\S+) (?:saying|that says|that|to say) (.+)")
         if (r != null) return Action.Sms(r.groupValues[1].trim(), r.groupValues[2].trim())
         r = m("(?:call|dial|phone|ring|make a call to|give a call to) (.+?)(?: now| please| for me)?")
         if (r != null) return Action.Call(r.groupValues[1])

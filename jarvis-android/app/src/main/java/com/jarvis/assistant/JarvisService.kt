@@ -655,25 +655,19 @@ class JarvisService : Service(), RecognitionListener {
             Lang.noteInput(question)
         }
         ChatStore.add(this, ChatStore.Role.USER, question, typed = true, file = file)
-        if (!brain.hasKey) {
-            say(when (Lang.mode(prefs)) {
-                "ur" -> "فائلیں سمجھنے کے لیے اے آئی آن کیجیے۔ سیٹنگز میں Groq کی key ڈال دیجیے۔"
-                "hi" -> "फ़ाइलें समझने के लिए AI चालू कीजिए। सेटिंग्स में Groq की key डाल दीजिए।"
-                else -> "To analyse files, turn on the AI: add your Groq key in Settings."
-            })
-            return
-        }
+        val online = brain.hasKey
         busy = true
         thinking = true
         val myTurn = turn
         JarvisBus.state(JarvisBus.State.THINKING, "Reading ${file.name}")
         Thread {
-            val groq = if (prefs.groqKey.isNotBlank()) GroqClient(prefs) else null
+            val groq = if (online && prefs.groqKey.isNotBlank()) GroqClient(prefs) else null
             val maxChars = if (prefs.aiEngine == Prefs.ENGINE_GROQ) 14_000 else 60_000
             val prepared = FileAnalyzer.prepare(this, file, maxChars, groq)
-            var missingVision = false
-            if (prepared.error == null && prepared.images.isNotEmpty() && prefs.aiEngine == Prefs.ENGINE_GROQ) {
-                missingVision = try { groq?.hasVision() == false } catch (e: Exception) { false }
+            // Claude always sees pictures; with Groq it depends on the models this key has.
+            var canSee = online
+            if (online && prepared.error == null && prepared.images.isNotEmpty() && prefs.aiEngine == Prefs.ENGINE_GROQ) {
+                canSee = try { groq?.hasVision() != false } catch (e: Exception) { true }
             }
             main.post {
                 if (myTurn != turn) return@post
@@ -683,18 +677,50 @@ class JarvisService : Service(), RecognitionListener {
                     say(prepared.error)
                     return@post
                 }
+                if (!online) {
+                    thinking = false
+                    JarvisBus.state(JarvisBus.State.IDLE)
+                    offlineFileAnswer(prepared)
+                    return@post
+                }
                 if (prepared.truncated) ChatStore.add(this, ChatStore.Role.NOTE, "Long file — the first part was analysed")
-                if (missingVision) ChatStore.add(this, ChatStore.Role.NOTE, "Your Groq key has no vision model, so pictures can't be seen — only text")
+                if (!canSee && prepared.images.isNotEmpty()) {
+                    ChatStore.add(this, ChatStore.Role.NOTE, "This Groq key has no picture model — using the text and objects the phone read from the image")
+                }
                 val ask = question.ifBlank { "Analyse this file and tell me what's in it." }
                 val prompt = buildString {
                     append(ask)
                     append("\n\nAttached file: ").append(file.name).append(" (").append(prepared.note.ifBlank { file.kind.name.lowercase() }).append(")")
-                    if (prepared.images.isNotEmpty()) append(". ").append(prepared.images.size).append(" image(s) attached.")
+                    if (prepared.images.isNotEmpty() && canSee) append(". ").append(prepared.images.size).append(" image(s) attached.")
+                    if (prepared.images.isNotEmpty() && !canSee) {
+                        append(". You can't see the image itself; use the on-device reading below and say so if it isn't enough.")
+                    }
                     if (prepared.text.isNotBlank()) append("\n\nContent:\n").append(prepared.text)
+                    if (prepared.seen.isNotBlank()) append("\n\nRead on the phone (OCR and object detection):\n").append(prepared.seen)
                 }
-                askBrain(prompt, prepared.images, myTurn, detailed = true)
+                askBrain(prompt, if (canSee) prepared.images else emptyList(), myTurn, detailed = true)
             }
         }.start()
+    }
+
+    /** AI is off: show what the phone could read by itself (text in pictures, objects, document text). */
+    private fun offlineFileAnswer(prepared: FileAnalyzer.Prepared) {
+        val found = listOf(prepared.seen, prepared.text).filter { it.isNotBlank() }.joinToString("\n\n").take(3000)
+        val lang = Lang.mode(prefs)
+        if (found.isBlank()) {
+            say(when (lang) {
+                "ur" -> "اس فائل میں مجھے کوئی لکھائی نہیں ملی۔ تفصیل سے سمجھنے کے لیے اے آئی آن کیجیے۔"
+                "hi" -> "इस फ़ाइल में मुझे कोई लिखावट नहीं मिली। पूरी तरह समझने के लिए AI चालू कीजिए।"
+                else -> "I couldn't find any text in this file. Turn on the AI for a full description."
+            })
+            return
+        }
+        val spoken = when (lang) {
+            "ur" -> "یہ فائل سے پڑھا گیا ہے۔ پوری تفصیل کے لیے اے آئی آن کیجیے۔"
+            "hi" -> "फ़ाइल से यह पढ़ा। पूरी जानकारी के लिए AI चालू कीजिए।"
+            else -> "Here's what I could read on the phone. Turn on the AI for a full analysis."
+        }
+        say(spoken, chatText = "$found\n\n— $spoken")
     }
 
     private fun askBrain(question: String, images: List<String>, myTurn: Int, detailed: Boolean = false) {

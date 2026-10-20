@@ -584,21 +584,6 @@ class CommandProcessor(private val ctx: Context) {
             ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
             ContactsContract.CommonDataKinds.Phone.NUMBER
         )
-        // 1) Plain text search (also matches contacts saved in Urdu/Hindi script).
-        ctx.contentResolver.query(
-            ContactsContract.CommonDataKinds.Phone.CONTENT_URI, projection,
-            "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?", arrayOf("%$name%"), null
-        )?.use { cur ->
-            var first: Pair<String, String>? = null
-            while (cur.moveToNext()) {
-                val n = cur.getString(0) ?: continue
-                val num = cur.getString(1) ?: continue
-                if (n.equals(name, ignoreCase = true)) return n to num
-                if (first == null) first = n to num
-            }
-            if (first != null) return first
-        }
-        // 2) Match by sound across scripts.
         val all = ArrayList<Pair<String, String>>()
         ctx.contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, projection, null, null, null)?.use { cur ->
             while (cur.moveToNext() && all.size < 5000) {
@@ -607,7 +592,7 @@ class CommandProcessor(private val ctx: Context) {
                 all.add(n to num)
             }
         }
-        return Translit.bestMatch(name, all, { it.first })
+        return Translit.bestName(name, all, { it.first })
     }
 
     /** Returns (displayName, number) for a spoken name or a spoken number. */
@@ -653,11 +638,15 @@ class CommandProcessor(private val ctx: Context) {
 
     private fun whatsapp(who: String, body: String): Result {
         val (name, number) = resolveNumber(who) ?: return notFound(who)
-        var digits = number.filter { it.isDigit() }
-        val cc = prefs.countryCode.filter { it.isDigit() }
-        if (number.trim().startsWith("00")) digits = digits.drop(2)
-        else if (!number.trim().startsWith("+") && cc.isNotEmpty()) {
-            digits = cc + digits.trimStart('0')
+        // WhatsApp's own row for this contact holds the full international number ("923001234567@s.whatsapp.net").
+        val waNumber = whatsappNumberOf(name)
+        var digits = waNumber ?: number.filter { it.isDigit() }
+        if (waNumber == null) {
+            val cc = prefs.countryCode.filter { it.isDigit() }.ifEmpty { dialCodeFromSim() }
+            if (number.trim().startsWith("00")) digits = digits.drop(2)
+            else if (!number.trim().startsWith("+") && cc.isNotEmpty() && !digits.startsWith(cc)) {
+                digits = cc + digits.trimStart('0')
+            }
         }
         val text = body.trim().replaceFirstChar { it.uppercase() }
         val query = "phone=$digits" + if (text.isNotEmpty()) "&text=" + Uri.encode(text) else ""
@@ -681,6 +670,29 @@ class CommandProcessor(private val ctx: Context) {
         } else {
             Result(L("Message ready for $name. Tap send, $sir.", "$name के लिए मैसेज तैयार है। भेज दीजिए।", "$name کے لیے میسج تیار ہے۔ بھیج دیجیے۔"))
         }
+    }
+
+    /** The international number WhatsApp itself stored for this contact, if WhatsApp has synced it. */
+    private fun whatsappNumberOf(displayName: String): String? = try {
+        ctx.contentResolver.query(
+            ContactsContract.Data.CONTENT_URI,
+            arrayOf(ContactsContract.Data.DATA1),
+            "${ContactsContract.Data.MIMETYPE} IN (?, ?) AND ${ContactsContract.Data.DISPLAY_NAME} = ?",
+            arrayOf("vnd.android.cursor.item/vnd.com.whatsapp.profile", "vnd.android.cursor.item/vnd.com.whatsapp.w4b.profile", displayName),
+            null
+        )?.use { cur ->
+            if (cur.moveToFirst()) cur.getString(0)?.substringBefore('@')?.filter { it.isDigit() }?.ifEmpty { null } else null
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Country calling code from the SIM or network ("pk" -> "92"), used when no code is set in Settings. */
+    private fun dialCodeFromSim(): String {
+        val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+        val iso = (tm?.simCountryIso?.ifBlank { null } ?: tm?.networkCountryIso?.ifBlank { null }
+            ?: java.util.Locale.getDefault().country).lowercase(java.util.Locale.ROOT)
+        return DIAL_CODES[iso] ?: ""
     }
 
     private fun isInstalled(pkg: String) = try {
@@ -806,6 +818,15 @@ class CommandProcessor(private val ctx: Context) {
     }
 
     companion object {
+        private val DIAL_CODES = mapOf(
+            "pk" to "92", "in" to "91", "bd" to "880", "ae" to "971", "sa" to "966", "qa" to "974", "kw" to "965",
+            "om" to "968", "bh" to "973", "us" to "1", "ca" to "1", "gb" to "44", "uk" to "44", "au" to "61", "nz" to "64",
+            "de" to "49", "fr" to "33", "it" to "39", "es" to "34", "nl" to "31", "ie" to "353", "tr" to "90", "af" to "93",
+            "np" to "977", "lk" to "94", "my" to "60", "sg" to "65", "za" to "27", "ng" to "234", "eg" to "20", "cn" to "86",
+            "jp" to "81", "kr" to "82", "id" to "62", "ph" to "63", "se" to "46", "no" to "47", "dk" to "45", "be" to "32",
+            "ch" to "41", "at" to "43", "pt" to "351", "pl" to "48", "gr" to "30", "ru" to "7", "br" to "55", "mx" to "52"
+        )
+
         private const val HELP_EN = "I can open apps, make calls, send texts and WhatsApp messages, read your notifications, " +
             "remember things, set reminders, alarms and timers, control the flashlight, volume, brightness and quick settings, " +
             "play YouTube, navigate, take screenshots, lock the phone, and tap, scroll and type on screen. " +

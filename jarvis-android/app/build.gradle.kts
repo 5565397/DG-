@@ -11,8 +11,8 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "3.4"
+        versionCode = 8
+        versionName = "3.5"
     }
 
     buildTypes {
@@ -55,6 +55,10 @@ dependencies {
     implementation("com.anthropic:anthropic-java:2.73.0")
     // Reads the text inside PDF files the user attaches.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    // On-device reading of pictures (text and objects), works without internet or an API key.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+    implementation("com.google.mlkit:image-labeling:17.0.9")
 
     testImplementation("junit:junit:4.13.2")
 }

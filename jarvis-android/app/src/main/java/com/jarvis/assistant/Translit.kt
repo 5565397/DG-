@@ -76,6 +76,25 @@ object Translit {
         return 1f - d.toFloat() / maxOf(x.length, y.length)
     }
 
+    /**
+     * Picks a contact for a spoken name: an exact name first, then a contact whose name holds every
+     * spoken word as a whole word ("ali" -> "Ali Raza"), then a match by sound. A name is never
+     * matched by letters buried inside another word ("ali" must not pick "AdXalive").
+     */
+    fun <T> bestName(spoken: String, candidates: List<T>, label: (T) -> String): T? {
+        val q = words(spoken)
+        if (q.isEmpty()) return null
+        candidates.firstOrNull { words(label(it)) == q }?.let { return it }
+        candidates.filter { c -> words(label(c)).containsAll(q) }
+            .minByOrNull { words(label(it)).size }?.let { return it }
+        return bestMatch(spoken, candidates, label)
+    }
+
+    private fun words(s: String): List<String> =
+        Normalizer.normalize(s, Normalizer.Form.NFC).lowercase()
+            .replace(Regex("[^\\p{L}\\p{M}\\p{N}]+"), " ").trim()
+            .split(' ').filter { it.isNotEmpty() }
+
     /** Best candidate by sound, or null if nothing is close enough. */
     fun <T> bestMatch(spoken: String, candidates: List<T>, label: (T) -> String, threshold: Float = 0.75f): T? {
         var best: T? = null

@@ -28,6 +28,9 @@ class GroqClient(private val prefs: Prefs) {
         private val VISION_PREFERENCE = listOf(
             "meta-llama/llama-4-maverick-17b-128e-instruct", "meta-llama/llama-4-scout-17b-16e-instruct"
         )
+        /** Model ids that can take pictures, for lineups newer than [VISION_PREFERENCE]. */
+        private val VISION_RX = Regex("llama-4|vision|scout|maverick|-vl\\b|llava|pixtral|gemma-3|qwen[^/]*vl|kimi-vl", RegexOption.IGNORE_CASE)
+        fun isVisionModel(id: String) = id in VISION_PREFERENCE || VISION_RX.containsMatchIn(id)
         private val WEB_PREFERENCE = listOf("groq/compound", "groq/compound-mini")
         private val NOT_CHAT = Regex("whisper|tts|guard|playai|orpheus|distil|embed|prompt-guard|safeguard", RegexOption.IGNORE_CASE)
     }
@@ -39,12 +42,25 @@ class GroqClient(private val prefs: Prefs) {
         val imageJpeg = images.firstOrNull()
         val webModel = needsWeb && imageJpeg == null
         val model = when {
-            imageJpeg != null -> pickModel(VISION_PREFERENCE, vision = true) ?: pickModel(CHAT_PREFERENCE)
+            imageJpeg != null -> visionModels().firstOrNull() ?: pickModel(CHAT_PREFERENCE)
             // Groq's compound models search the web themselves; try them even if the list didn't show them.
             webModel -> pickModel(WEB_PREFERENCE, exact = true) ?: WEB_PREFERENCE.first()
             else -> pickModel(CHAT_PREFERENCE)
         } ?: throw GroqException(404, "No Groq chat model available")
-        val canSeeImage = imageJpeg != null && model in VISION_PREFERENCE
+        val canSeeImage = imageJpeg != null && isVisionModel(model)
+        if (canSeeImage) {
+            // Try each picture model this key has; a retired one shouldn't cost the user the answer.
+            var last: GroqException? = null
+            for (m in visionModels().ifEmpty { listOf(model) }) {
+                try {
+                    return send(m, system, history, question, images.take(5), maxTokens)
+                } catch (e: GroqException) {
+                    if (e.code == 401 || e.code == 429) throw e
+                    last = e
+                }
+            }
+            throw last ?: GroqException(404, "No Groq vision model available")
+        }
         return try {
             send(model, system, history, question, if (canSeeImage) images.take(5) else emptyList(), maxTokens)
         } catch (e: GroqException) {
@@ -100,7 +116,20 @@ class GroqClient(private val prefs: Prefs) {
     private fun sizeOf(id: String): Int = Regex("(\\d+)b", RegexOption.IGNORE_CASE).find(id)?.groupValues?.get(1)?.toIntOrNull() ?: 0
 
     /** True if this key can use a model that sees pictures. */
-    fun hasVision(): Boolean = pickModel(VISION_PREFERENCE, vision = true) != null
+    fun hasVision(): Boolean = visionModels().isNotEmpty()
+
+    /** Picture-capable models on this key, best first. If the model list can't be read, the known ones are tried. */
+    private fun visionModels(): List<String> {
+        val available = try {
+            models()
+        } catch (e: Exception) {
+            prefs.groqModels
+        }
+        if (available.isEmpty()) return VISION_PREFERENCE
+        val known = VISION_PREFERENCE.filter { it in available }
+        val other = available.filter { it !in known && VISION_RX.containsMatchIn(it) }.sortedByDescending { sizeOf(it) }
+        return known + other
+    }
 
     /** Speech-to-text with Groq's Whisper (works for audio and video files up to 25 MB). */
     fun transcribe(file: java.io.File): String {
