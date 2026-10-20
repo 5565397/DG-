@@ -31,18 +31,21 @@ import java.util.Locale
 /** Turns a spoken sentence into an action on the phone and a spoken reply. */
 class CommandProcessor(private val ctx: Context) {
 
-    enum class Control { NONE, STOP_LISTENING, RELOCK }
+    enum class Control { NONE, STOP_LISTENING, RELOCK, NEW_CHAT }
 
     data class Result(
         val reply: String,
         val control: Control = Control.NONE,
         /** Runs after Jarvis has finished speaking (e.g. lock screen, screenshot). */
-        val after: (() -> Unit)? = null
+        val after: (() -> Unit)? = null,
+        /** When set, the service asks the AI brain this question and speaks its answer. */
+        val ask: String? = null
     )
 
     private val prefs = Prefs(ctx)
     private val main = Handler(Looper.getMainLooper())
     private val sir: String get() = prefs.title
+    private val hasBrain: Boolean get() = prefs.apiKey.isNotBlank()
     private val a11y: JarvisAccessibilityService? get() = JarvisAccessibilityService.instance
 
     private val needA11y: Result
@@ -54,8 +57,8 @@ class CommandProcessor(private val ctx: Context) {
             .replace(Regex("\\s+"), " ")
             .trim()
             .trimEnd('.', ' ')
-            .removePrefix("please ")
             .removeSuffix(" please")
+            .replace(Regex("^(?:(?:please|can you|could you|would you|will you|jarvis) )+"), "")
         if (c.isEmpty()) return Result("Yes, $sir?")
 
         return try {
@@ -76,6 +79,8 @@ class CommandProcessor(private val ctx: Context) {
             return Result("Going offline. Call me when you need me, $sir.", Control.STOP_LISTENING)
         if (m("(lock|secure) (yourself|jarvis|voice|assistant)|voice lock") != null)
             return Result("Voice lock engaged, $sir.", Control.RELOCK)
+        if (m("(new conversation|new chat|start over|forget (that|it|everything|our conversation)|clear (the )?(chat|conversation))") != null)
+            return Result("Fresh start, $sir. What's on your mind?", Control.NEW_CHAT)
         if (m("(hello|hi|hey|good (morning|afternoon|evening)|you there|are you there|wake up)") != null)
             return Result("${greeting()}, $sir. At your service.")
         if (m("(who are you|what is your name|what's your name|introduce yourself)") != null)
@@ -83,7 +88,7 @@ class CommandProcessor(private val ctx: Context) {
         if (m("(thank you|thanks|thank you jarvis|good job|well done)") != null)
             return Result("Always a pleasure, $sir.")
         if (m("(help|what can you do|commands|show commands)") != null)
-            return Result("I can open apps, make calls, send texts and WhatsApp messages, control the flashlight, volume and brightness, set alarms and timers, search the web, play YouTube, navigate, take screenshots, lock the phone, and tap, scroll and type on screen. Just ask.")
+            return Result("I can answer any question, open apps, make calls, send texts and WhatsApp messages, control the flashlight, volume and brightness, set alarms and timers, search the web, play YouTube, navigate, take screenshots, lock the phone, and tap, scroll and type on screen. Just ask.")
 
         // ----- Time, date, battery -----
         if (m("(what('s| is) the )?time( is it)?( now)?|what time is it|tell me the time|current time") != null)
@@ -208,8 +213,10 @@ class CommandProcessor(private val ctx: Context) {
         if (r != null) return map(r.groupValues.drop(1).first { it.isNotEmpty() })
         if (m("(take a |take |click a )?(selfie|front camera)") != null) return camera(true)
         if (m("(take a |take |click a |capture a )?(photo|picture|pic)|(open |start )?(the )?camera") != null) return camera(false)
-        r = m("(?:search|google|look up|search for|search google for|google search) (?:for )?(.+)|(?:what|who|when|where|why|how)(?:'s| is| are| was| were| did| do| does| to| many| much| can| should) .+")
-        if (r != null) return search(r.groupValues[1].ifEmpty { c })
+        r = m("(?:search|google|look up|search for|search google for|google search) (?:for )?(.+)")
+        if (r != null) return search(r.groupValues[1])
+        if (m("(?:what|who|whom|whose|when|where|why|which|how|is|are|can|could|should|would|will|do|does|did)(?:'s| ).+|(?:tell me|explain|describe|define|give me|write|translate|calculate|suggest|recommend|summarize|compare|ask (?:claude|ai|the ai)) .+") != null)
+            return if (hasBrain) Result("", ask = c) else search(c)
 
         // ----- Settings pages -----
         r = m("open (?:the )?(wi-?fi|wifi|bluetooth|display|sound|battery|location|app|apps|storage|security|accessibility|developer|date|language|notification|data|mobile data|hotspot) settings?")
@@ -220,9 +227,11 @@ class CommandProcessor(private val ctx: Context) {
         if (r != null) return openApp(r.groupValues[1])
 
         // Maybe the user just said an app name.
-        findApp(c)?.let { return launchApp(it.first, it.second) }
+        findApp(c, loose = false)?.let { return launchApp(it.first, it.second) }
 
-        return Result("Sorry $sir, I don't know how to do that yet. Say help to hear what I can do.")
+        // Anything else goes to the AI brain.
+        if (hasBrain) return Result("", ask = c)
+        return Result("Sorry $sir, I don't know how to do that yet. Add a Claude API key in my settings and I can answer anything.")
     }
 
     // =================================================================
@@ -591,7 +600,7 @@ class CommandProcessor(private val ctx: Context) {
     }
 
     // ----- Apps -----
-    private fun findApp(spoken: String): Pair<String, String>? {
+    private fun findApp(spoken: String, loose: Boolean = true): Pair<String, String>? {
         val target = spoken.lowercase(Locale.US).replace(" ", "")
         if (target.isEmpty()) return null
         val pm = ctx.packageManager
@@ -603,8 +612,8 @@ class CommandProcessor(private val ctx: Context) {
         fun norm(s: String) = s.lowercase(Locale.US).replace(Regex("[^a-z0-9]"), "")
         return apps.firstOrNull { norm(it.first) == target }
             ?: apps.firstOrNull { norm(it.first).startsWith(target) }
-            ?: apps.firstOrNull { target.length >= 3 && norm(it.first).contains(target) }
-            ?: apps.firstOrNull { norm(it.first).length >= 3 && target.contains(norm(it.first)) }
+            ?: (if (loose) apps.firstOrNull { target.length >= 3 && norm(it.first).contains(target) } else null)
+            ?: (if (loose) apps.firstOrNull { norm(it.first).length >= 3 && target.contains(norm(it.first)) } else null)
     }
 
     private fun launchApp(label: String, pkg: String): Result {

@@ -31,6 +31,11 @@ class Prefs(context: Context) {
         get() = sp.getString("country_code", "") ?: ""
         set(v) = sp.edit().putString("country_code", v).apply()
 
+    /** Claude API key for the AI brain (console.anthropic.com). */
+    var apiKey: String
+        get() = sp.getString("api_key", "") ?: ""
+        set(v) = sp.edit().putString("api_key", v).apply()
+
     /** Enrolled voice samples, stored as "a,b,c;d,e,f". */
     var voiceprints: List<FloatArray>
         get() {

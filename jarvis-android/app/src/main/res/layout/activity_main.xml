@@ -275,6 +275,22 @@
                 android:textStyle="bold" />
 
             <EditText
+                android:id="@+id/inputApiKey"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Claude API key for the AI brain (sk-ant-...)"
+                android:inputType="textPassword"
+                android:textColor="@color/jarvis_text"
+                android:textColorHint="@color/jarvis_muted" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Get a key at console.anthropic.com → API Keys. Usage is billed to your Anthropic account."
+                android:textColor="@color/jarvis_muted"
+                android:textSize="12sp" />
+
+            <EditText
                 android:id="@+id/inputTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

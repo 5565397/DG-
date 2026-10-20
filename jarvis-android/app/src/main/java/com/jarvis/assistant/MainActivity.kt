@@ -157,6 +157,8 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         val inputLanguage = findViewById<EditText>(R.id.inputLanguage)
         val inputCountry = findViewById<EditText>(R.id.inputCountry)
         val inputUnlock = findViewById<EditText>(R.id.inputUnlock)
+        val inputApiKey = findViewById<EditText>(R.id.inputApiKey)
+        inputApiKey.setText(prefs.apiKey)
         inputTitle.setText(prefs.title)
         inputLanguage.setText(prefs.language)
         inputCountry.setText(prefs.countryCode)
@@ -165,6 +167,7 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
             prefs.title = inputTitle.text.toString().trim().ifEmpty { "sir" }
             prefs.language = inputLanguage.text.toString().trim().ifEmpty { "en-US" }
             prefs.countryCode = inputCountry.text.toString().trim()
+            prefs.apiKey = inputApiKey.text.toString().trim()
             prefs.unlockMinutes = inputUnlock.text.toString().trim().toIntOrNull()?.coerceIn(0, 720) ?: 5
             toast("Saved.")
         }
@@ -392,6 +395,8 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         private val HELP_TEXT = """
             THINGS YOU CAN SAY
             (start with "Jarvis" when the wake word is on)
+
+            ASK ANYTHING (needs a Claude API key): "Who won the match last night?", "Explain black holes simply", "Tell me a joke", "What should I cook tonight?" — then just ask a follow-up, no wake word needed. "New conversation" clears its memory.
 
             APPS: "Open WhatsApp", "Launch Instagram", "Open settings"
             CALLS: "Call Mom", "Call 0300 1234567"

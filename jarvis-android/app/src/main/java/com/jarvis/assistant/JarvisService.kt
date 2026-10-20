@@ -47,6 +47,7 @@ class JarvisService : Service(), RecognitionListener {
     private lateinit var prefs: Prefs
     private lateinit var speaker: Speaker
     private lateinit var processor: CommandProcessor
+    private lateinit var brain: AiBrain
     private var recognizer: SpeechRecognizer? = null
 
     private var listening = false
@@ -55,6 +56,8 @@ class JarvisService : Service(), RecognitionListener {
     /** The next thing heard is a command (no wake word needed). */
     private var awaitingCommand = false
     private var pendingCommand: String? = null
+    /** Listening for an optional follow-up after an AI answer — stay quiet if nobody speaks. */
+    private var quietFollowUp = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -63,6 +66,7 @@ class JarvisService : Service(), RecognitionListener {
         prefs = Prefs(this)
         speaker = Speaker(this)
         processor = CommandProcessor(this)
+        brain = AiBrain(this)
         isRunning = true
     }
 
@@ -218,6 +222,7 @@ class JarvisService : Service(), RecognitionListener {
 
         if (awaitingCommand) {
             awaitingCommand = false
+            quietFollowUp = false
             handleCommand(heard[0])
             return
         }
@@ -246,6 +251,12 @@ class JarvisService : Service(), RecognitionListener {
             return
         }
         val silence = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+        if (awaitingCommand && quietFollowUp) {
+            awaitingCommand = false
+            quietFollowUp = false
+            resume()
+            return
+        }
         if (awaitingCommand) {
             awaitingCommand = false
             say(if (silence) "I didn't catch that, ${prefs.title}." else "My hearing glitched. Try again, ${prefs.title}.")
@@ -344,8 +355,31 @@ class JarvisService : Service(), RecognitionListener {
                 awaitingCommand = false
             }
             CommandProcessor.Control.RELOCK -> unlockedUntil = 0L
+            CommandProcessor.Control.NEW_CHAT -> brain.forget()
             CommandProcessor.Control.NONE -> {}
         }
+        val question = result.ask
+        if (question != null) {
+            think(question)
+            return
+        }
         say(result.reply, result.after)
+    }
+
+    private fun think(question: String) {
+        busy = true
+        stopListening()
+        JarvisBus.status("Thinking...", true)
+        Thread {
+            val answer = brain.ask(question)
+            main.post {
+                busy = false
+                // Listen once more for a follow-up question, without needing the wake word.
+                say(answer) {
+                    awaitingCommand = true
+                    quietFollowUp = true
+                }
+            }
+        }.start()
     }
 }
