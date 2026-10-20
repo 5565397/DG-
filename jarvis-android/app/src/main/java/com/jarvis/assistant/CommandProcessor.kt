@@ -87,8 +87,16 @@ class CommandProcessor(private val ctx: Context) {
 
     // ---------------------------------------------------------------- entry
 
-    fun handle(input: String): Result {
-        val action = CommandParser.parse(input, nonEnglishMode = Lang.hindustaniInput(prefs))
+    /**
+     * [context] is what the user originally said, when [input] is a command the AI derived
+     * from it — so "WhatsApp" in the user's words is never lost.
+     */
+    fun handle(input: String, context: String? = null): Result {
+        var action = CommandParser.parse(input, nonEnglishMode = Lang.hindustaniInput(prefs))
+        // Asked for WhatsApp but it parsed as a plain SMS: send it on WhatsApp, never as an SMS.
+        if (action is Action.Sms && (Hindustani.mentionsWhatsapp(input) || (context != null && Hindustani.mentionsWhatsapp(context)))) {
+            action = Action.WhatsApp(action.who, action.body)
+        }
         return try {
             execute(action)
         } catch (e: SecurityException) {

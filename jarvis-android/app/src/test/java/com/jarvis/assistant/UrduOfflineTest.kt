@@ -75,6 +75,27 @@ class UrduOfflineTest {
         assertEquals(Action.Sms("ali", ""), ur("ali ko msg kro"))
     }
 
+    @Test fun whatsappHowRecognizersSpellIt() {
+        // Google often writes WhatsApp as "واٹس اپ" / "व्हाट्सअप" — must still be WhatsApp, never SMS.
+        assertEquals(Action.WhatsApp("علی", "میں آ رہا ہوں"), ur("واٹس اپ کھول کر علی کو میسج کرو کہ میں آ رہا ہوں"))
+        assertEquals(Action.WhatsApp("علی", "میں آ رہا ہوں"), ur("علی کو واٹس اپ پر میسج کرو کہ میں آ رہا ہوں"))
+        assertEquals(Action.WhatsApp("अली", "मैं आ रहा हूँ"), ur("व्हाट्सअप खोल कर अली को मैसेज करो कि मैं आ रहा हूँ"))
+        assertEquals(Action.WhatsApp("ali", "hello"), ur("whats app open kr k ali ko message kro k hello"))
+        assertEquals(true, Hindustani.mentionsWhatsapp("واٹس اپ پر علی کو بولو"))
+        assertEquals(true, Hindustani.mentionsWhatsapp("Send Ali a message on WhatsApp"))
+        assertEquals(false, Hindustani.mentionsWhatsapp("send ali a message"))
+    }
+
+    @Test fun fileKinds() {
+        assertEquals(FileAnalyzer.Kind.IMAGE, FileAnalyzer.kindOf("image/jpeg", "a.jpg"))
+        assertEquals(FileAnalyzer.Kind.PDF, FileAnalyzer.kindOf("application/octet-stream", "report.pdf"))
+        assertEquals(FileAnalyzer.Kind.DOCUMENT, FileAnalyzer.kindOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "cv.docx"))
+        assertEquals(FileAnalyzer.Kind.AUDIO, FileAnalyzer.kindOf("audio/ogg", "voice.opus"))
+        assertEquals(FileAnalyzer.Kind.VIDEO, FileAnalyzer.kindOf("video/mp4", "clip.mp4"))
+        assertEquals(FileAnalyzer.Kind.TEXT, FileAnalyzer.kindOf("text/plain", "notes.txt"))
+        assertEquals(FileAnalyzer.Kind.OTHER, FileAnalyzer.kindOf("application/zip", "a.zip"))
+    }
+
     @Test fun whatsappEnglish() {
         assertEquals(Action.WhatsApp("ali", "i am coming"), CommandParser.parse("open whatsapp and message Ali saying I am coming"))
         assertEquals(Action.WhatsApp("sara", ""), CommandParser.parse("open WhatsApp chat with Sara"))

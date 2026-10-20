@@ -3,6 +3,9 @@ package com.jarvis.assistant
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.widget.ImageView
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
@@ -51,6 +54,20 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
     private var lastRole: ChatStore.Role? = null
     private var lastDay = ""
 
+    /** A file picked with + and waiting to be sent. */
+    private var pendingFile: FileAnalyzer.Attachment? = null
+
+    private val filePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null) return@registerForActivityResult
+        Thread {
+            val file = FileAnalyzer.importUri(this, uri)
+            runOnUiThread {
+                if (file == null) Toast.makeText(this, "Couldn't open that file (max 40 MB).", Toast.LENGTH_LONG).show()
+                else showPending(file)
+            }
+        }.start()
+    }
+
     /** What to do once the microphone permission is granted. */
     private var afterPermission: (() -> Unit)? = null
 
@@ -88,6 +105,13 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         orb.setOnClickListener(listen)
         btnMic.setOnClickListener(listen)
         btnSend.setOnClickListener { runTyped() }
+        findViewById<ImageButton>(R.id.btnAttach).setOnClickListener {
+            filePicker.launch(arrayOf("image/*", "application/pdf", "text/*", "audio/*", "video/*", "application/*"))
+        }
+        findViewById<ImageButton>(R.id.attachRemove).setOnClickListener {
+            pendingFile?.let { java.io.File(it.path).delete() }
+            showPending(null)
+        }
 
         // Wraps like a multi-line box but shows a Send key on the keyboard.
         inputCommand.setHorizontallyScrolling(false)
@@ -104,11 +128,7 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         inputCommand.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                val hasText = !s.isNullOrBlank()
-                btnSend.visibility = if (hasText) View.VISIBLE else View.GONE
-                btnMic.visibility = if (hasText) View.GONE else View.VISIBLE
-            }
+            override fun afterTextChanged(s: Editable?) = updateSendButton()
         })
 
         chipWake.setOnClickListener {
@@ -242,6 +262,11 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
             label.setPadding(dp(6), 0, 0, 0)
             insert(label, topMargin = 14)
         }
+        if (m.filePath != null) {
+            addFileBubble(m, user, sameSender)
+            lastRole = m.role
+            return
+        }
         val bubble = TextView(this)
         bubble.text = m.text
         bubble.textSize = 15.5f
@@ -262,6 +287,54 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         // Keep the live-text bubble last.
         chatList.addView(bubble, chatList.indexOfChild(txtPartial), lp)
         lastRole = m.role
+    }
+
+    /** A message with a picture or file: the picture (or a file row) and the text under it. */
+    private fun addFileBubble(m: ChatStore.Message, user: Boolean, sameSender: Boolean) {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setBackgroundResource(if (user) R.drawable.bubble_user else R.drawable.bubble_voxa)
+        box.setPadding(dp(6), dp(6), dp(6), dp(6))
+        val maxW = (resources.displayMetrics.widthPixels * 0.72f).toInt()
+        val kind = FileAnalyzer.kindOf(m.fileMime.orEmpty(), m.fileName.orEmpty())
+        val bmp = if (kind == FileAnalyzer.Kind.IMAGE && java.io.File(m.filePath!!).exists()) thumbnail(m.filePath, 700) else null
+        if (bmp != null) {
+            val img = ImageView(this)
+            img.setImageBitmap(bmp)
+            img.adjustViewBounds = true
+            img.scaleType = ImageView.ScaleType.FIT_CENTER
+            img.maxWidth = maxW
+            img.maxHeight = dp(320)
+            img.clipToOutline = true
+            img.setBackgroundResource(R.drawable.card)
+            box.addView(img, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        } else {
+            val row = TextView(this)
+            row.text = m.fileName ?: "File"
+            row.textSize = 14f
+            row.maxWidth = maxW
+            row.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
+            row.compoundDrawablePadding = dp(10)
+            val icon = ContextCompat.getDrawable(this, R.drawable.ic_file)?.mutate()
+            icon?.setTint(ContextCompat.getColor(this, R.color.accent))
+            row.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null)
+            row.setPadding(dp(10), dp(8), dp(12), dp(8))
+            box.addView(row)
+        }
+        if (m.text.isNotBlank()) {
+            val tv = TextView(this)
+            tv.text = m.text
+            tv.textSize = 15.5f
+            tv.maxWidth = maxW
+            tv.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
+            tv.setPadding(dp(10), dp(8), dp(10), dp(5))
+            tv.textDirection = View.TEXT_DIRECTION_FIRST_STRONG
+            box.addView(tv)
+        }
+        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        lp.gravity = if (user) Gravity.END else Gravity.START
+        lp.topMargin = dp(if (sameSender) 4 else 14)
+        chatList.addView(box, chatList.indexOfChild(txtPartial), lp)
     }
 
     private fun note(text: String): TextView {
@@ -302,9 +375,79 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
 
     private fun runTyped() {
         val text = inputCommand.text.toString().trim()
+        val file = pendingFile
+        if (file != null) {
+            inputCommand.setText("")
+            showPending(null)
+            val intent = Intent(this, JarvisService::class.java).setAction(JarvisService.ACTION_RUN_FILE)
+                .putExtra(JarvisService.EXTRA_FILE_PATH, file.path)
+                .putExtra(JarvisService.EXTRA_FILE_NAME, file.name)
+                .putExtra(JarvisService.EXTRA_FILE_MIME, file.mime)
+                .putExtra(JarvisService.EXTRA_TEXT, text)
+            ContextCompat.startForegroundService(this, intent)
+            return
+        }
         if (text.isEmpty()) return
         inputCommand.setText("")
         send(JarvisService.ACTION_RUN_TEXT, text)
+    }
+
+    private fun updateSendButton() {
+        val ready = !inputCommand.text.isNullOrBlank() || pendingFile != null
+        btnSend.visibility = if (ready) View.VISIBLE else View.GONE
+        btnMic.visibility = if (ready) View.GONE else View.VISIBLE
+    }
+
+    /** Shows (or hides) the file waiting above the message box. */
+    private fun showPending(file: FileAnalyzer.Attachment?) {
+        pendingFile = file
+        val box = findViewById<LinearLayout>(R.id.attachPreview)
+        if (file == null) {
+            box.visibility = View.GONE
+            updateSendButton()
+            return
+        }
+        box.visibility = View.VISIBLE
+        findViewById<TextView>(R.id.attachName).text = file.name
+        findViewById<TextView>(R.id.attachInfo).text = "${kindLabel(file.kind)} · ${sizeLabel(file.size)} · add a question or just send"
+        val thumb = findViewById<ImageView>(R.id.attachThumb)
+        val bmp = if (file.kind == FileAnalyzer.Kind.IMAGE) thumbnail(file.path, 200) else null
+        if (bmp != null) {
+            thumb.imageTintList = null
+            thumb.setPadding(0, 0, 0, 0)
+            thumb.setImageBitmap(bmp)
+        } else {
+            thumb.imageTintList = ContextCompat.getColorStateList(this, R.color.text_secondary)
+            thumb.setPadding(dp(10), dp(10), dp(10), dp(10))
+            thumb.setImageResource(R.drawable.ic_file)
+        }
+        updateSendButton()
+        inputCommand.requestFocus()
+    }
+
+    private fun kindLabel(kind: FileAnalyzer.Kind) = when (kind) {
+        FileAnalyzer.Kind.IMAGE -> "Picture"
+        FileAnalyzer.Kind.PDF -> "PDF"
+        FileAnalyzer.Kind.DOCUMENT -> "Document"
+        FileAnalyzer.Kind.TEXT -> "Text"
+        FileAnalyzer.Kind.AUDIO -> "Audio"
+        FileAnalyzer.Kind.VIDEO -> "Video"
+        FileAnalyzer.Kind.OTHER -> "File"
+    }
+
+    private fun sizeLabel(bytes: Long): String = when {
+        bytes >= 1024 * 1024 -> String.format(Locale.US, "%.1f MB", bytes / 1048576.0)
+        bytes >= 1024 -> "${bytes / 1024} KB"
+        else -> "$bytes B"
+    }
+
+    private fun thumbnail(path: String, maxPx: Int): android.graphics.Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= maxPx && bounds.outHeight / (sample * 2) >= maxPx) sample *= 2
+        return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
     private fun isWakeOn() = JarvisService.isRunning && JarvisService.wakeMode

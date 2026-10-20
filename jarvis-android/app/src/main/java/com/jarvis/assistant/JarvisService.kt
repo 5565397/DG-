@@ -33,7 +33,11 @@ class JarvisService : Service(), RecognitionListener {
         const val ACTION_LISTEN_ONCE = "com.jarvis.assistant.LISTEN_ONCE"
         const val ACTION_RUN_TEXT = "com.jarvis.assistant.RUN_TEXT"
         const val ACTION_STOP = "com.jarvis.assistant.STOP"
+        const val ACTION_RUN_FILE = "com.jarvis.assistant.RUN_FILE"
         const val EXTRA_TEXT = "text"
+        const val EXTRA_FILE_PATH = "file_path"
+        const val EXTRA_FILE_NAME = "file_name"
+        const val EXTRA_FILE_MIME = "file_mime"
 
         private const val CHANNEL_ID = "jarvis_listening"
         private const val NOTIF_ID = 7
@@ -79,6 +83,8 @@ class JarvisService : Service(), RecognitionListener {
     /** Waiting for a call or another app to release the microphone. */
     private var micPaused = false
     private var lastPartial = ""
+    /** The user's latest words, so AI-derived commands keep details like "WhatsApp". */
+    private var lastUserText = ""
     private var detectedTag: String? = null
 
     private val watchdog = Runnable { onRecognizerStuck() }
@@ -142,6 +148,20 @@ class JarvisService : Service(), RecognitionListener {
                     awaitingCommand = false
                     quietFollowUp = false
                     handleInput(text, typed = true)
+                }
+            }
+            ACTION_RUN_FILE -> {
+                val path = intent.getStringExtra(EXTRA_FILE_PATH)
+                if (path != null) {
+                    interrupt()
+                    stopListening()
+                    awaitingCommand = false
+                    quietFollowUp = false
+                    val file = java.io.File(path)
+                    analyzeFile(
+                        FileAnalyzer.Attachment(path, intent.getStringExtra(EXTRA_FILE_NAME) ?: file.name, intent.getStringExtra(EXTRA_FILE_MIME) ?: "", file.length()),
+                        intent.getStringExtra(EXTRA_TEXT).orEmpty().trim()
+                    )
                 }
             }
             else -> if (!wakeMode && !busy && !listening) stopSelf()
@@ -492,6 +512,7 @@ class JarvisService : Service(), RecognitionListener {
     private fun handleInput(text: String, typed: Boolean) {
         turn++
         lastInputTyped = typed
+        lastUserText = text
         val command = WakeWord.strip(text)
         Lang.noteInput(command.ifBlank { text }, if (typed) null else detectedTag)
         ChatStore.add(this, ChatStore.Role.USER, text, typed)
@@ -516,7 +537,8 @@ class JarvisService : Service(), RecognitionListener {
         execute(command)
     }
 
-    private fun say(text: String, after: (() -> Unit)? = null, log: Boolean = true) {
+    /** [chatText] is the fuller version for the chat when the spoken one is shortened. */
+    private fun say(text: String, after: (() -> Unit)? = null, log: Boolean = true, chatText: String? = null) {
         busy = true
         stopListening()
         if (text.isBlank()) {
@@ -527,7 +549,7 @@ class JarvisService : Service(), RecognitionListener {
             }, 300)
             return
         }
-        if (log) ChatStore.add(this, ChatStore.Role.VOXA, text)
+        if (log) ChatStore.add(this, ChatStore.Role.VOXA, chatText ?: text)
         speaking = true
         JarvisBus.state(JarvisBus.State.SPEAKING)
         speaker.speak(text) {
@@ -592,7 +614,7 @@ class JarvisService : Service(), RecognitionListener {
     private fun runAiCommand(command: String) {
         JarvisBus.status(command)
         ChatStore.add(this, ChatStore.Role.NOTE, "Running: $command")
-        val result = processor.handle(command)
+        val result = processor.handle(command, context = lastUserText)
         applyControl(result)
         // Never bounce back to the AI a second time.
         if (result.ask != null) {
@@ -613,19 +635,71 @@ class JarvisService : Service(), RecognitionListener {
             ChatStore.add(this, ChatStore.Role.NOTE, "Looking at your screen")
             // The visible text goes along with the screenshot, so even a model without vision knows what's there.
             val text = a11y.readScreen(maxChars = 2500)
-            val withText = if (text.isBlank()) question else "$question\n\nVisible text on my screen:\n$text"
+            val withText = "This is a screenshot of my phone screen right now. $question" +
+                if (text.isBlank()) "" else "\n\nVisible text on my screen:\n$text"
             a11y.captureScreen { jpeg ->
                 if (myTurn != turn) return@captureScreen
-                askBrain(withText, jpeg, myTurn)
+                askBrain(withText, listOfNotNull(jpeg), myTurn)
             }
         } else {
-            askBrain(question, null, myTurn)
+            askBrain(question, emptyList(), myTurn)
         }
     }
 
-    private fun askBrain(question: String, screenJpeg: String?, myTurn: Int) {
+    /** A file from the chat's + button: read it, then let the AI analyse it. */
+    private fun analyzeFile(file: FileAnalyzer.Attachment, question: String) {
+        turn++
+        lastInputTyped = true
+        if (question.isNotBlank()) {
+            lastUserText = question
+            Lang.noteInput(question)
+        }
+        ChatStore.add(this, ChatStore.Role.USER, question, typed = true, file = file)
+        if (!brain.hasKey) {
+            say(when (Lang.mode(prefs)) {
+                "ur" -> "فائلیں سمجھنے کے لیے اے آئی آن کیجیے۔ سیٹنگز میں Groq کی key ڈال دیجیے۔"
+                "hi" -> "फ़ाइलें समझने के लिए AI चालू कीजिए। सेटिंग्स में Groq की key डाल दीजिए।"
+                else -> "To analyse files, turn on the AI: add your Groq key in Settings."
+            })
+            return
+        }
+        busy = true
+        thinking = true
+        val myTurn = turn
+        JarvisBus.state(JarvisBus.State.THINKING, "Reading ${file.name}")
         Thread {
-            val reply = brain.ask(question, screenJpeg)
+            val groq = if (prefs.groqKey.isNotBlank()) GroqClient(prefs) else null
+            val maxChars = if (prefs.aiEngine == Prefs.ENGINE_GROQ) 14_000 else 60_000
+            val prepared = FileAnalyzer.prepare(this, file, maxChars, groq)
+            var missingVision = false
+            if (prepared.error == null && prepared.images.isNotEmpty() && prefs.aiEngine == Prefs.ENGINE_GROQ) {
+                missingVision = try { groq?.hasVision() == false } catch (e: Exception) { false }
+            }
+            main.post {
+                if (myTurn != turn) return@post
+                if (prepared.error != null) {
+                    thinking = false
+                    busy = false
+                    say(prepared.error)
+                    return@post
+                }
+                if (prepared.truncated) ChatStore.add(this, ChatStore.Role.NOTE, "Long file — the first part was analysed")
+                if (missingVision) ChatStore.add(this, ChatStore.Role.NOTE, "Your Groq key has no vision model, so pictures can't be seen — only text")
+                val ask = question.ifBlank { "Analyse this file and tell me what's in it." }
+                val prompt = buildString {
+                    append(ask)
+                    append("\n\nAttached file: ").append(file.name).append(" (").append(prepared.note.ifBlank { file.kind.name.lowercase() }).append(")")
+                    if (prepared.images.isNotEmpty()) append(". ").append(prepared.images.size).append(" image(s) attached.")
+                    if (prepared.text.isNotBlank()) append("\n\nContent:\n").append(prepared.text)
+                }
+                askBrain(prompt, prepared.images, myTurn, detailed = true)
+            }
+        }.start()
+    }
+
+    private fun askBrain(question: String, images: List<String>, myTurn: Int, detailed: Boolean = false) {
+        Thread {
+            val reply = brain.ask(question, images, detailed = detailed)
             main.post {
                 // The user moved on (typed or tapped again) — this answer is stale.
                 if (myTurn != turn) return@post
@@ -636,7 +710,7 @@ class JarvisService : Service(), RecognitionListener {
                     runAiCommand(command)
                     return@post
                 }
-                say(reply.speech, after = {
+                say(reply.speech, chatText = reply.display, after = {
                     // Listen once more for a spoken follow-up, without needing the wake word.
                     if (!reply.failed && !lastInputTyped) {
                         awaitingCommand = true

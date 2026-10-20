@@ -93,7 +93,10 @@ object Hindustani {
     private const val callVerbs = "(?:को |کو |ko )?(?:कॉल|फोन|फ़ोन|کال|فون|call|phone) (?:करो|कर दो|मिलाओ|लगाओ|کرو|کر دو|ملاؤ|لگاؤ|karo|kar do|milao|lagao)"
     private const val msgNoun = "मैसेज|मेसेज|संदेश|एसएमएस|میسج|میسیج|مسیج|پیغام|ایس ایم ایس|message|msg|sms"
     private const val sendVerbs = "करो|कर दो|भेजो|भेज दो|लिखो|सेंड करो|کرو|کر دو|بھیجو|بھیج دو|لکھو|سینڈ کرو|karo|kar do|bhejo|bhej do|likho|send karo|send kar do|karna|bhejna"
-    private const val whatsapp = "व्हाट्सएप|व्हाट्सऐप|वॉट्सऐप|واٹس ایپ|واٹساپ|وٹس ایپ|whatsapp"
+    /** Every way speech recognizers and people write "WhatsApp". */
+    private const val whatsapp = "व्हाट्सएप|व्हाट्सऐप|वॉट्सऐप|वॉट्सएप|वाट्सएप|वाट्सऐप|व्हाट्सअप|वॉट्सअप|व्हाट्स ऐप|व्हाट्स एप|व्हाट्स अप|" +
+        "واٹس ایپ|واٹس اپ|واٹس آپ|واٹساپ|واٹسایپ|وٹس ایپ|وٹس اپ|وٹساپ|واٹزایپ|واٹز ایپ|" +
+        "whatsapp|whats app|what's app|whatsap|watsapp|watsap|wattsapp|whatapp|watsaap|wtsp"
     private const val to = "को|کو|ko"
     private const val youtube = "यूट्यूब|यू ट्यूब|یوٹیوب|یو ٹیوب|youtube"
     private const val onWord = "पर|पे|में|پر|پے|میں|par|pe|mein"
@@ -326,6 +329,11 @@ object Hindustani {
     }
 
     // ---------------------------------------------------------------- Roman spelling
+
+    private val WHATSAPP_ANYWHERE by lazy { rx("(?:^|[^\\p{L}\\p{M}])(?:$whatsapp)(?:$|[^\\p{L}\\p{M}])") }
+
+    /** True if the text mentions WhatsApp in any script or spelling. */
+    fun mentionsWhatsapp(text: String): Boolean = WHATSAPP_ANYWHERE.containsMatchIn(nfc(text).lowercase(Locale.ROOT))
 
     /** Common ways people type Roman Urdu/Hindi, mapped to one spelling so the patterns stay simple. */
     private val ROMAN = mapOf(

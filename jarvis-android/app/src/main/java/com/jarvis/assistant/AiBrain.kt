@@ -30,7 +30,7 @@ import java.util.Locale
 class AiBrain(context: Context) {
 
     /** What Claude said: either something to speak, or a phone command to run. */
-    data class Reply(val speech: String, val command: String? = null, val failed: Boolean = false)
+    data class Reply(val speech: String, val command: String? = null, val failed: Boolean = false, val display: String = speech)
 
     private val prefs = Prefs(context)
     private var client: AnthropicClient? = null
@@ -76,7 +76,7 @@ class AiBrain(context: Context) {
 
             Phone actions: only when the user clearly wants you to operate the phone (open an app, call or message someone, play something, set an alarm or timer, toggle a setting, navigate somewhere, take a photo or screenshot, scroll, go back, and so on), reply with exactly one line and nothing else:
             CMD: <the request as a short English command>
-            Examples: "CMD: open YouTube", "CMD: call Ammi", "CMD: send a message to Ali saying I am on my way", "CMD: WhatsApp Sara saying see you at 8", "CMD: open WhatsApp chat with Ali","CMD: set an alarm for 6:30 am", "CMD: set a timer for 10 minutes", "CMD: turn on bluetooth", "CMD: play Atif Aslam songs on YouTube", "CMD: navigate to Lahore airport". Write names of people, apps and places in English letters. Never use CMD for questions or for searching — answer those yourself.
+            Examples: "CMD: open YouTube", "CMD: call Ammi", "CMD: send a message to Ali saying I am on my way", "CMD: WhatsApp Sara saying see you at 8", "CMD: open WhatsApp chat with Ali","CMD: set an alarm for 6:30 am", "CMD: set a timer for 10 minutes", "CMD: turn on bluetooth", "CMD: play Atif Aslam songs on YouTube", "CMD: navigate to Lahore airport". Write names of people, apps and places in English letters. If the user mentions WhatsApp, the command must say WhatsApp (never a plain message or SMS). Never use CMD for questions or for searching — answer those yourself.
 
             Current date and time on the phone: $now.
         """.trimIndent() + personalContext().let { if (it.isEmpty()) "" else "\n\n$it" }
@@ -119,21 +119,26 @@ class AiBrain(context: Context) {
         return lines.joinToString("\n")
     }
 
-    /** Returns what to speak, or a phone command to run. Never throws. [screenJpeg] is an optional base64 screenshot. */
-    fun ask(question: String, screenJpeg: String? = null, remember: Boolean = true): Reply {
+    /**
+     * Returns what to speak (and show), or a phone command to run. Never throws.
+     * [images] are base64 JPEGs (a screenshot, an attached photo, PDF pages or video frames).
+     * [detailed] asks for a fuller, organised answer for the chat — used for file analysis.
+     */
+    fun ask(question: String, images: List<String> = emptyList(), remember: Boolean = true, detailed: Boolean = false): Reply {
         if (!hasKey) return Reply(Lang.get(prefs, Lang.Line.NO_BRAIN), failed = true)
         val raw = when (prefs.aiEngine) {
-            Prefs.ENGINE_GROQ -> askGroq(question, screenJpeg)
-            else -> askClaude(question, screenJpeg)
+            Prefs.ENGINE_GROQ -> askGroq(question, images, detailed = detailed)
+            else -> askClaude(question, images, detailed)
         }
         if (raw.error != null) return Reply(raw.error, failed = true)
         var text = stripThinking(raw.text)
-        var command = commandIn(text)
+        var command = if (detailed) null else commandIn(text)
         // The model chose "search" for something the user wanted answered: ask it to answer.
         if (command != null && Regex("^(search|google|look up|find|browse)\\b", RegexOption.IGNORE_CASE).containsMatchIn(command)) {
+            val again = "$question\n\n(Answer this yourself in plain speech. Do not reply with CMD.)"
             val retry = when (prefs.aiEngine) {
-                Prefs.ENGINE_GROQ -> askGroq("$question\n\n(Answer this yourself in plain speech. Do not reply with CMD.)", screenJpeg, forceWeb = true)
-                else -> askClaude("$question\n\n(Answer this yourself in plain speech. Do not reply with CMD.)", screenJpeg)
+                Prefs.ENGINE_GROQ -> askGroq(again, images, forceWeb = true)
+                else -> askClaude(again, images, false)
             }
             if (retry.error == null) {
                 text = stripThinking(retry.text)
@@ -143,12 +148,15 @@ class AiBrain(context: Context) {
         }
         val answer = if (command != null) "" else cleanForSpeech(text)
         if (command == null && answer.isBlank()) return Reply(t("I came up empty on that one, ${prefs.title}.", "इसका जवाब नहीं मिला।", "اس کا جواب نہیں ملا۔"))
+        val display = if (detailed && command == null) cleanForChat(text) else answer
+        val speech = if (detailed) firstSentences(answer, 320) else answer
 
         if (remember) synchronized(history) {
-            history.add((if (screenJpeg != null) "[about my screen] $question" else question) to (if (command != null) "(Done on the phone: $command)" else answer))
+            val asked = if (images.isNotEmpty()) "[with ${images.size} image(s)] ${question.take(1500)}" else question.take(1500)
+            history.add(asked to (if (command != null) "(Done on the phone: $command)" else display.take(1500)))
             while (history.size > 8) history.removeAt(0)
         }
-        return Reply(answer, command)
+        return Reply(speech, command, display = display)
     }
 
     private class Raw(val text: String = "", val error: String? = null)
@@ -157,16 +165,22 @@ class AiBrain(context: Context) {
 
     private fun commandIn(text: String) = Regex("(?m)^\\s*CMD:\\s*(.+)$").find(text)?.groupValues?.get(1)?.trim()?.trim('"', '.')
 
-    private fun askGroq(question: String, screenJpeg: String?, forceWeb: Boolean = false): Raw {
+    private val detailRule = "\n\nThis request is about an attached file or picture. Here you may give a complete, well-organised answer for the chat (up to about 300 words): start with a one or two sentence summary, then the important details. Plain text only — short lines, and simple dashes for lists are fine; no markdown symbols like ** or #. Never reply with CMD for a file."
+
+    private fun askGroq(question: String, images: List<String>, forceWeb: Boolean = false, detailed: Boolean = false): Raw {
         val past = synchronized(history) {
             history.flatMap { (q, a) -> listOf(GroqClient.Msg("user", q), GroqClient.Msg("assistant", a)) }
         }
-        val prompt = if (screenJpeg != null) "This is a screenshot of my phone screen right now. $question" else question
         return try {
-            Raw(groq.chat(systemPrompt(), past, prompt, screenJpeg, needsWeb = forceWeb || needsWebRegex.containsMatchIn(question)))
+            Raw(groq.chat(
+                systemPrompt() + if (detailed) detailRule else "", past, question, images,
+                needsWeb = !detailed && (forceWeb || needsWebRegex.containsMatchIn(question)),
+                maxTokens = if (detailed) 2048 else 1024
+            ))
         } catch (e: GroqClient.GroqException) {
             Raw(error = when (e.code) {
                 401, 403 -> t("My Groq key was rejected, ${prefs.title}. Please check it in Settings.", "Groq की key काम नहीं कर रही। सेटिंग्स में देख लीजिए।", "Groq کی key کام نہیں کر رہی۔ سیٹنگز میں دیکھ لیجیے۔")
+                413 -> t("That file is too big for Groq in one go. Try a shorter file or a single page.", "यह फ़ाइल Groq के लिए बहुत बड़ी है। छोटी फ़ाइल भेजिए।", "یہ فائل Groq کے لیے بہت بڑی ہے۔ چھوٹی فائل بھیجیے۔")
                 429 -> t("Groq says I'm asking too fast. Give me a moment and try again.", "Groq की लिमिट पूरी हो गई। थोड़ी देर बाद पूछिए।", "Groq کی حد پوری ہو گئی۔ تھوڑی دیر بعد پوچھیے۔")
                 else -> t("My Groq service had a problem. Error ${e.code}.", "Groq में दिक़्क़त आई। एरर ${e.code}।", "Groq میں مسئلہ آیا۔ ایرر ${e.code}۔")
             })
@@ -175,13 +189,13 @@ class AiBrain(context: Context) {
         }
     }
 
-    private fun askClaude(question: String, screenJpeg: String?): Raw {
+    private fun askClaude(question: String, images: List<String>, detailed: Boolean): Raw {
         val builder = MessageCreateParams.builder()
             .model("claude-opus-5-5")
             .maxTokens(4096L)
-            .system(systemPrompt())
+            .system(systemPrompt() + if (detailed) detailRule else "")
             // Quick spoken answers: low effort keeps latency and cost down.
-            .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.LOW).build())
+            .outputConfig(OutputConfig.builder().effort(if (detailed) OutputConfig.Effort.MEDIUM else OutputConfig.Effort.LOW).build())
             .addTool(WebSearchTool20260209.builder().maxUses(3L).build())
             // If a safety classifier declines, let the API retry on a suitable model.
             .putAdditionalHeader("anthropic-beta", "server-side-fallback-2026-07-01")
@@ -193,16 +207,17 @@ class AiBrain(context: Context) {
                 builder.addAssistantMessage(a)
             }
         }
-        if (screenJpeg != null) {
-            val image = ImageBlockParam.builder()
-                .source(Base64ImageSource.builder().data(screenJpeg).mediaType(Base64ImageSource.MediaType.IMAGE_JPEG).build())
-                .build()
-            builder.addUserMessageOfBlockParams(
-                listOf(
-                    ContentBlockParam.ofImage(image),
-                    ContentBlockParam.ofText("This is a screenshot of my phone screen right now. $question")
-                )
-            )
+        if (images.isNotEmpty()) {
+            val blocks = ArrayList<ContentBlockParam>()
+            for (img in images.take(20)) {
+                blocks.add(ContentBlockParam.ofImage(
+                    ImageBlockParam.builder()
+                        .source(Base64ImageSource.builder().data(img).mediaType(Base64ImageSource.MediaType.IMAGE_JPEG).build())
+                        .build()
+                ))
+            }
+            blocks.add(ContentBlockParam.ofText(question))
+            builder.addUserMessageOfBlockParams(blocks)
         } else {
             builder.addUserMessage(question)
         }
@@ -232,6 +247,24 @@ class AiBrain(context: Context) {
         } catch (e: Exception) {
             Raw(error = t("I couldn't reach my AI brain. Check the internet connection, ${prefs.title}.", "AI से कनेक्ट नहीं हो पाई। इंटरनेट देख लीजिए।", "اے آئی سے رابطہ نہیں ہو سکا۔ انٹرنیٹ دیکھ لیجیے۔"))
         }
+    }
+
+    /** Keeps line breaks for the chat but drops markdown symbols. */
+    private fun cleanForChat(text: String): String = text
+        .replace(Regex("```[\\s\\S]*?```"), " ")
+        .replace(Regex("\\[([^\\]]+)]\\([^)]*\\)"), "$1")
+        .replace(Regex("[*_#`>|]"), "")
+        .replace(Regex("(?m)^\\s*[•]\\s+"), "- ")
+        .replace(Regex("[ \\t]+"), " ")
+        .replace(Regex("\\n{3,}"), "\n\n")
+        .trim()
+
+    /** The opening sentences, up to about [max] characters — what Voxa reads aloud from a long answer. */
+    private fun firstSentences(text: String, max: Int): String {
+        if (text.length <= max) return text
+        val cut = text.take(max)
+        val end = maxOf(cut.lastIndexOf(". "), cut.lastIndexOf("۔"), cut.lastIndexOf("।"), cut.lastIndexOf("? "), cut.lastIndexOf("! "))
+        return if (end > max / 3) cut.take(end + 1) else cut
     }
 
     private fun textOf(message: Message): String =

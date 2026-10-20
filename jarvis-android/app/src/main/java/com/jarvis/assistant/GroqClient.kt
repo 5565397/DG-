@@ -35,7 +35,8 @@ class GroqClient(private val prefs: Prefs) {
     data class Msg(val role: String, val text: String)
 
     /** Sends a chat and returns the reply text. [imageJpeg] makes it a vision request; [needsWeb] prefers a web-search model. */
-    fun chat(system: String, history: List<Msg>, question: String, imageJpeg: String?, needsWeb: Boolean): String {
+    fun chat(system: String, history: List<Msg>, question: String, images: List<String>, needsWeb: Boolean, maxTokens: Int = 1024): String {
+        val imageJpeg = images.firstOrNull()
         val webModel = needsWeb && imageJpeg == null
         val model = when {
             imageJpeg != null -> pickModel(VISION_PREFERENCE, vision = true) ?: pickModel(CHAT_PREFERENCE)
@@ -45,17 +46,17 @@ class GroqClient(private val prefs: Prefs) {
         } ?: throw GroqException(404, "No Groq chat model available")
         val canSeeImage = imageJpeg != null && model in VISION_PREFERENCE
         return try {
-            send(model, system, history, question, if (canSeeImage) imageJpeg else null)
+            send(model, system, history, question, if (canSeeImage) images.take(5) else emptyList(), maxTokens)
         } catch (e: GroqException) {
             if (webModel && e.code != 401 && e.code != 429) {
                 // Web model unavailable on this key: answer with the normal chat model instead.
                 val fallback = pickModel(CHAT_PREFERENCE) ?: throw e
-                send(fallback, system, history, question, null)
+                send(fallback, system, history, question, emptyList(), maxTokens)
             } else if (e.code == 404 || (e.code == 400 && e.message.orEmpty().contains("model", ignoreCase = true))) {
                 // Model retired or not allowed: refresh the list once and try the next best one.
                 prefs.groqModels = emptyList()
                 val retry = pickModel(CHAT_PREFERENCE) ?: throw e
-                send(retry, system, history, question, null)
+                send(retry, system, history, question, emptyList(), maxTokens)
             } else {
                 throw e
             }
@@ -98,14 +99,74 @@ class GroqClient(private val prefs: Prefs) {
 
     private fun sizeOf(id: String): Int = Regex("(\\d+)b", RegexOption.IGNORE_CASE).find(id)?.groupValues?.get(1)?.toIntOrNull() ?: 0
 
-    private fun send(model: String, system: String, history: List<Msg>, question: String, imageJpeg: String?): String {
+    /** True if this key can use a model that sees pictures. */
+    fun hasVision(): Boolean = pickModel(VISION_PREFERENCE, vision = true) != null
+
+    /** Speech-to-text with Groq's Whisper (works for audio and video files up to 25 MB). */
+    fun transcribe(file: java.io.File): String {
+        val models = listOf("whisper-large-v3-turbo", "whisper-large-v3")
+        var last: GroqException? = null
+        for (model in models) {
+            try {
+                val body = multipart("$BASE/audio/transcriptions", model, file)
+                return JSONObject(body).optString("text").trim()
+            } catch (e: GroqException) {
+                last = e
+                if (e.code != 404 && e.code != 400) throw e
+            }
+        }
+        throw last ?: GroqException(404, "No Whisper model available")
+    }
+
+    private fun multipart(url: String, model: String, file: java.io.File): String {
+        val key = prefs.groqKey.trim()
+        if (key.isEmpty()) throw GroqException(401, "No Groq key")
+        val boundary = "----voxa" + System.currentTimeMillis()
+        val conn = URL(url).openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 180_000
+            conn.doOutput = true
+            conn.setRequestProperty("Authorization", "Bearer $key")
+            conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            conn.outputStream.use { out ->
+                fun field(name: String, value: String) {
+                    out.write("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n".toByteArray(Charsets.UTF_8))
+                }
+                field("model", model)
+                field("response_format", "json")
+                val fileName = file.name.substringAfter('_').ifBlank { "audio" }.replace("\"", "")
+                out.write("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$fileName\"\r\nContent-Type: application/octet-stream\r\n\r\n".toByteArray(Charsets.UTF_8))
+                file.inputStream().use { it.copyTo(out) }
+                out.write("\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8))
+            }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) {
+                val message = try {
+                    JSONObject(text).optJSONObject("error")?.optString("message").orEmpty()
+                } catch (e: Exception) {
+                    text.take(200)
+                }
+                throw GroqException(code, message.ifBlank { "HTTP $code" })
+            }
+            return text
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun send(model: String, system: String, history: List<Msg>, question: String, images: List<String>, maxTokens: Int): String {
         val messages = JSONArray()
         messages.put(JSONObject().put("role", "system").put("content", system))
         for (m in history) messages.put(JSONObject().put("role", m.role).put("content", m.text))
-        if (imageJpeg != null) {
-            val content = JSONArray()
-                .put(JSONObject().put("type", "text").put("text", question))
-                .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$imageJpeg")))
+        if (images.isNotEmpty()) {
+            val content = JSONArray().put(JSONObject().put("type", "text").put("text", question))
+            for (img in images) {
+                content.put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$img")))
+            }
             messages.put(JSONObject().put("role", "user").put("content", content))
         } else {
             messages.put(JSONObject().put("role", "user").put("content", question))
@@ -114,7 +175,7 @@ class GroqClient(private val prefs: Prefs) {
             .put("model", model)
             .put("messages", messages)
             .put("temperature", 0.6)
-            .put("max_completion_tokens", 1024)
+            .put("max_completion_tokens", maxTokens)
         val body = request("POST", "$BASE/chat/completions", payload.toString())
         val choice = JSONObject(body).optJSONArray("choices")?.optJSONObject(0)
         return choice?.optJSONObject("message")?.optString("content").orEmpty()
