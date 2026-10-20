@@ -92,7 +92,7 @@ object Hindustani {
     private const val openFront = "ओपन|اوپن|open"
     private const val callVerbs = "(?:को |کو |ko )?(?:कॉल|फोन|फ़ोन|کال|فون|call|phone) (?:करो|कर दो|मिलाओ|लगाओ|کرو|کر دو|ملاؤ|لگاؤ|karo|kar do|milao|lagao)"
     private const val msgNoun = "मैसेज|मेसेज|संदेश|एसएमएस|میسج|میسیج|مسیج|پیغام|ایس ایم ایس|message|msg|sms"
-    private const val sendVerbs = "करो|कर दो|भेजो|भेज दो|लिखो|کرو|کر دو|بھیجو|بھیج دو|لکھو|karo|kar do|bhejo|bhej do|likho"
+    private const val sendVerbs = "करो|कर दो|भेजो|भेज दो|लिखो|सेंड करो|کرو|کر دو|بھیجو|بھیج دو|لکھو|سینڈ کرو|karo|kar do|bhejo|bhej do|likho|send karo|send kar do|karna|bhejna"
     private const val whatsapp = "व्हाट्सएप|व्हाट्सऐप|वॉट्सऐप|واٹس ایپ|واٹساپ|وٹس ایپ|whatsapp"
     private const val to = "को|کو|ko"
     private const val youtube = "यूट्यूब|यू ट्यूब|یوٹیوب|یو ٹیوب|youtube"
@@ -196,20 +196,19 @@ object Hindustani {
 
     /** Returns an English command, or null if this isn't one of the known Urdu/Hindi commands. */
     fun toEnglish(input: String): String? {
-        val t = nfc(input).lowercase(Locale.ROOT)
-            .replace(Regex("[\\p{P}&&[^'&+:%-]]"), " ") // drop punctuation like । ؟ ، .
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        val t = romanFix(
+            nfc(input).lowercase(Locale.ROOT)
+                .replace(Regex("[\\p{P}&&[^'&+:%-]]"), " ") // drop punctuation like । ؟ ، .
+                .replace(Regex("\\s+"), " ")
+                .trim()
+        )
         if (t.isEmpty()) return null
         fun has(words: List<String>) = words.any { containsWord(t, it) }
         fun m(p: String) = rx(p).matchEntire(t)
         fun words() = t.split(' ').size
 
         // ----- Free-text commands (names / messages / queries keep their script) -----
-        m("(.+?) (?:$to) (?:$whatsapp)(?: (?:$onWord))?(?: (?:$msgNoun))? (?:$sendVerbs)(?: (?:$that))? (.+)")
-            ?.let { return "whatsapp ${it.groupValues[1]} saying ${it.groupValues[2]}" }
-        m("(.+?) (?:$to) (?:$msgNoun) (?:$sendVerbs)(?: (?:$that))? (.+)")
-            ?.let { return "send a message to ${it.groupValues[1]} saying ${it.groupValues[2]}" }
+        messageCommand(t)?.let { return it }
 
         // Reminders, alarms, timers
         if (rx("(?:^| )(?:$remindWords)(?:$| )").containsMatchIn(t)) {
@@ -294,6 +293,70 @@ object Hindustani {
         m("(.+?) (?:$openVerbs)")?.let { return "open ${Translit.knownApp(it.groupValues[1]) ?: it.groupValues[1]}" }
         m("(?:$openFront) (.+?)(?: (?:$openVerbs))?")?.let { return "open ${Translit.knownApp(it.groupValues[1]) ?: it.groupValues[1]}" }
         return null
+    }
+
+    // ---------------------------------------------------------------- messages
+
+    /** "whatsapp khol kar" / "واٹس ایپ کھول کر" / "व्हाट्सएप खोल कर" before the actual request. */
+    private val openFirst ="(?:(?:$whatsapp) (?:open|khol|kholo|کھول|کھولو|اوپن|खोल|खोलो|ओपन)(?: (?:kar|karo|کر|کرو|कर|करो))?(?: (?:ke|kar|aur|کے|کر|اور|के|कर|और))? )?"
+
+    /**
+     * "Ali ko message karo ke main aa raha hoon", "WhatsApp khol kar Ali ko message karo",
+     * "علی کو واٹس ایپ پر میسج کرو کہ ..." — WhatsApp if WhatsApp is mentioned, otherwise SMS.
+     * Without a message text, Voxa opens the chat so you can type it yourself.
+     */
+    private fun messageCommand(t: String): String? {
+        val r = rx(
+            "$openFirst(.+?) (?:$to)(?: (?:$whatsapp))?(?: (?:$onWord))?(?: (?:$msgNoun))?(?: (?:$sendVerbs))?(?: (?:$that) (.+))?"
+        ).matchEntire(t) ?: return null
+        val who = r.groupValues[1].trim()
+        val body = r.groupValues[2].trim()
+        val viaWhatsapp = rx("(?:^| )(?:$whatsapp)(?:$| )").containsMatchIn(t)
+        val mentionsMessage = rx("(?:^| )(?:$msgNoun)(?:$| )").containsMatchIn(t)
+        // Must actually be about messaging, and the name can't be a leftover verb.
+        if (!viaWhatsapp && !mentionsMessage) return null
+        if (!rx("(?:^| )(?:$sendVerbs)(?:$| )").containsMatchIn(t) && body.isEmpty() && !viaWhatsapp) return null
+        if (who.isEmpty() || rx("(?:$whatsapp|$msgNoun)").matches(who)) return null
+        return when {
+            viaWhatsapp && body.isNotEmpty() -> "whatsapp $who saying $body"
+            viaWhatsapp -> "open whatsapp chat with $who"
+            body.isNotEmpty() -> "send a message to $who saying $body"
+            else -> "compose a message to $who"
+        }
+    }
+
+    // ---------------------------------------------------------------- Roman spelling
+
+    /** Common ways people type Roman Urdu/Hindi, mapped to one spelling so the patterns stay simple. */
+    private val ROMAN = mapOf(
+        "kro" to "karo", "kr" to "kar", "ker" to "kar", "krdo" to "kar do", "kardo" to "kar do", "krdein" to "kar do", "krna" to "karna",
+        "k" to "ke", "kay" to "ke", "kh" to "keh", "py" to "par", "pr" to "par", "pay" to "par",
+        "msg" to "message", "mesg" to "message", "massage" to "message", "msj" to "message", "mesage" to "message", "messege" to "message",
+        "bhjo" to "bhejo", "bhejdo" to "bhej do", "bhjdo" to "bhej do",
+        "whatsap" to "whatsapp", "watsapp" to "whatsapp", "watsap" to "whatsapp", "whatapp" to "whatsapp", "wtsp" to "whatsapp", "watsaap" to "whatsapp",
+        "mujy" to "mujhe", "mujhy" to "mujhe", "mjhe" to "mujhe", "mujhay" to "mujhe",
+        "hy" to "hai", "hay" to "hai", "he" to "hai", "kon" to "kaun", "kaon" to "kaun", "kia" to "kya",
+        "opn" to "open", "khool" to "khol", "kholdo" to "khol do"
+    )
+
+    private fun romanFix(t: String): String {
+        if (!t.any { it in 'a'..'z' }) return t
+        val joined = t.replace(Regex("\\bwhats app\\b"), "whatsapp")
+        return joined.split(' ').joinToString(" ") { w ->
+            // "he" is English too — only treat it as "hai" at the end of a Roman Urdu sentence.
+            if (w == "he") w else ROMAN[w] ?: w
+        }.let { if (it.endsWith(" he")) it.removeSuffix(" he") + " hai" else it }
+    }
+
+    private val QUESTION = Regex(
+        "(?:^| )(?:kaun|kya|kahan|kab|kaise|kaisa|kaisi|kyun|kyon|kitna|kitni|kitne|کون|کیا|کہاں|کب|کیسے|کیسا|کیوں|کتنا|کتنی|کتنے|कौन|क्या|कहाँ|कहां|कब|कैसे|कैसा|क्यों|कितना|कितनी|कितने)(?: |$)"
+    )
+    private val TELL = Regex("(?:^| )(?:batao|bataiye|bata do|samjhao|بتاؤ|بتائیے|بتا دو|سمجھاؤ|बताओ|बताइए|बता दो|समझाओ)(?:$| )")
+
+    /** A question or "tell me about…" in Urdu/Hindi (any script) — something to answer, not a phone command. */
+    fun isQuestion(input: String): Boolean {
+        val t = romanFix(nfc(input).lowercase(Locale.ROOT).replace(Regex("[\\p{P}&&[^'-]]"), " ").replace(Regex("\\s+"), " ").trim())
+        return input.trim().endsWith("?") || input.trim().endsWith("؟") || QUESTION.containsMatchIn(t) || TELL.containsMatchIn(t)
     }
 
     private fun pad(n: Int) = n.toString().padStart(2, '0')

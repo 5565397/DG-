@@ -84,6 +84,8 @@ object CommandParser {
     fun parse(input: String, nonEnglishMode: Boolean = false): Action {
         val translated = if (nonEnglishMode || Hindustani.isNonLatin(input)) Hindustani.toEnglish(input) else null
         if (translated == null && Hindustani.isNonLatin(input)) return Action.Ask(input.trim())
+        // Roman Urdu/Hindi questions ("elon musk kon hai") are for the AI, not phone commands.
+        if (translated == null && nonEnglishMode && Hindustani.isQuestion(input)) return Action.Question(input.trim())
         val c = normalize(translated ?: input)
         if (c.isEmpty()) return Action.Empty
         return route(c)
@@ -215,7 +217,14 @@ object CommandParser {
 
         // ----- Calls, SMS, WhatsApp -----
         r = m("(?:send )?(?:a )?whats ?app(?: message)?(?: to)? (.+?) (?:saying|that says|that|message|and say|to say) (.+)")
-        if (r != null) return Action.WhatsApp(r.groupValues[1], r.groupValues[2])
+        if (r != null) return Action.WhatsApp(r.groupValues[1].trim(), r.groupValues[2].trim())
+        r = m("open whats ?app and (?:send a message to|send a message|message|text|write to|tell) (.+?) (?:saying|that says|that|to say) (.+)")
+        if (r != null) return Action.WhatsApp(r.groupValues[1].trim(), r.groupValues[2].trim())
+        // No message text: open the chat so the user can type it.
+        r = m("(?:open )?(?:the )?whats ?app chat (?:with|to|for|of) (.+)|open whats ?app and (?:send a message to|message|text|chat with|open (?:the )?chat with|write to) (.+)")
+        if (r != null) return Action.WhatsApp(r.groupValues.drop(1).first { it.isNotEmpty() }.trim(), "")
+        r = m("compose (?:a |an )?(?:message|text|sms) (?:to|for) (.+)")
+        if (r != null) return Action.Sms(r.groupValues[1].trim(), "")
         r = m("(?:send (?:a |an )?(?:message|text|sms|text message) to|text|message|sms|tell(?! me )(?! us )) (.+?) (?:saying|that says|that|to say) (.+)")
         if (r != null) return Action.Sms(r.groupValues[1].trim(), r.groupValues[2].trim())
         r = m("(?:call|dial|phone|ring|make a call to|give a call to) (.+?)(?: now| please| for me)?")

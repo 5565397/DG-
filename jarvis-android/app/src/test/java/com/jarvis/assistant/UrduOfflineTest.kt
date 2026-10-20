@@ -65,6 +65,28 @@ class UrduOfflineTest {
         assertEquals(Action.WhatsApp("سارہ", "آٹھ بجے ملتے ہیں"), ur("سارہ کو واٹس ایپ کرو کہ آٹھ بجے ملتے ہیں"))
     }
 
+    @Test fun whatsappTypedRomanUrdu() {
+        // Exactly how people type it in the chat box.
+        assertEquals(Action.WhatsApp("ali", "mein aa raha hun"), ur("whatsapp open kr k Ali ko message kro k mein aa raha hun"))
+        assertEquals(Action.WhatsApp("ali", ""), ur("whatsapp open kr k Ali ko message kro"))
+        assertEquals(Action.WhatsApp("ali", "kal milte hain"), ur("whatsapp kholo aur ali ko message bhejo ke kal milte hain"))
+        assertEquals(Action.WhatsApp("ali", "call me"), ur("ali ko whatsapp py msg kro k call me"))
+        assertEquals(Action.WhatsApp("علی", "میں آ رہا ہوں"), ur("واٹس ایپ کھول کر علی کو میسج کرو کہ میں آ رہا ہوں"))
+        assertEquals(Action.Sms("ali", ""), ur("ali ko msg kro"))
+    }
+
+    @Test fun whatsappEnglish() {
+        assertEquals(Action.WhatsApp("ali", "i am coming"), CommandParser.parse("open whatsapp and message Ali saying I am coming"))
+        assertEquals(Action.WhatsApp("sara", ""), CommandParser.parse("open WhatsApp chat with Sara"))
+        assertEquals(Action.WhatsApp("sara", ""), CommandParser.parse("open whatsapp and message sara"))
+    }
+
+    @Test fun romanQuestionsGoToTheAi() {
+        assertEquals(Action.Question("elon musk kon hay"), ur("elon musk kon hay"))
+        assertEquals(Action.Question("pakistan ki abadi kitni hai"), ur("pakistan ki abadi kitni hai"))
+        assertEquals(Action.Question("mujhe quaid e azam ke bare mein batao"), ur("mujhe quaid e azam ke bare mein batao"))
+    }
+
     // ---------------- Apps ----------------
 
     @Test fun openAppsByUrduName() {

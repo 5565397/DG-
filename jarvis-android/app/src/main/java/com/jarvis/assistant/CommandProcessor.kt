@@ -627,7 +627,12 @@ class CommandProcessor(private val ctx: Context) {
     @Suppress("DEPRECATION")
     private fun sms(who: String, body: String): Result {
         val (name, number) = resolveNumber(who) ?: return notFound(who)
-        val text = body.replaceFirstChar { it.uppercase() }
+        val text = body.trim().replaceFirstChar { it.uppercase() }
+        if (text.isEmpty()) {
+            // No text yet: open the conversation so the user can type it.
+            launch(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(number))))
+            return Result(L("Here's your chat with $name. What should I write?", "$name की चैट खोल दी।", "$name کی چیٹ کھول دی۔"))
+        }
         if (!granted(Manifest.permission.SEND_SMS)) {
             launch(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(number))).putExtra("sms_body", text))
             return Result(L("I've written the message to $name. Just hit send, $sir.", "$name के लिए मैसेज लिख दिया। बस भेज दीजिए।", "$name کے لیے میسج لکھ دیا۔ بس بھیج دیجیے۔"))
@@ -646,13 +651,21 @@ class CommandProcessor(private val ctx: Context) {
         else if (!number.trim().startsWith("+") && cc.isNotEmpty()) {
             digits = cc + digits.trimStart('0')
         }
-        val text = body.replaceFirstChar { it.uppercase() }
-        val uri = Uri.parse("https://api.whatsapp.com/send?phone=$digits&text=" + Uri.encode(text))
-        val intent = Intent(Intent.ACTION_VIEW, uri)
+        val text = body.trim().replaceFirstChar { it.uppercase() }
+        val query = "phone=$digits" + if (text.isNotEmpty()) "&text=" + Uri.encode(text) else ""
         val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { isInstalled(it) }
             ?: return Result(L("WhatsApp isn't installed, $sir.", "व्हाट्सएप इंस्टॉल नहीं है।", "واٹس ایپ انسٹال نہیں ہے۔"))
-        intent.setPackage(pkg)
-        if (!launch(intent)) return Result(L("I couldn't open WhatsApp, $sir.", "व्हाट्सएप नहीं खुला।", "واٹس ایپ نہیں کھلا۔"))
+        // Open the chat inside WhatsApp itself (never the browser).
+        val opened = launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?$query")).setPackage(pkg)) ||
+            launch(Intent(Intent.ACTION_VIEW, Uri.parse("whatsapp://send?$query")).setPackage(pkg))
+        if (!opened) return Result(L("I couldn't open WhatsApp, $sir.", "व्हाट्सएप नहीं खुला।", "واٹس ایپ نہیں کھلا۔"))
+        if (text.isEmpty()) {
+            return Result(L(
+                "Here's your WhatsApp chat with $name. Tell me what to write, or type it there.",
+                "$name की व्हाट्सएप चैट खोल दी। बताइए क्या लिखना है।",
+                "$name کی واٹس ایپ چیٹ کھول دی۔ بتائیے کیا لکھنا ہے۔"
+            ))
+        }
         val s = a11y
         return if (s != null) {
             s.clickWhenAppears("$pkg:id/send", "Send")
@@ -671,12 +684,19 @@ class CommandProcessor(private val ctx: Context) {
 
     // ----- Web, YouTube, maps, camera -----
     private fun search(query: String): Result {
-        val ok = launch(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query)) ||
-            launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode(query))))
-        return Result(
-            if (ok) L("Here's what Google has on that.", "गूगल पर ढूंढ रही हूँ।", "گوگل پر تلاش کر رہی ہوں۔")
-            else L("I couldn't open a browser, $sir.", "ब्राउज़र नहीं खुला।", "براؤزر نہیں کھلا۔")
-        )
+        // A results URL loads straight away; the "web search" intent only fills the box on some phones.
+        val ok = launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode(query)))) ||
+            launch(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query))
+        if (!ok) return Result(L("I couldn't open a browser, $sir.", "ब्राउज़र नहीं खुला।", "براؤزر نہیں کھلا۔"))
+        // AI is switched off but a key exists: say how to get a direct answer instead.
+        if (!hasBrain && (prefs.groqKey.isNotBlank() || prefs.apiKey.isNotBlank())) {
+            return Result(L(
+                "AI is off, so here are Google's results. Turn on the AI chip for a direct answer.",
+                "AI बंद है, इसलिए गूगल के नतीजे खोल दिए। सीधे जवाब के लिए AI चालू कर दीजिए।",
+                "اے آئی بند ہے، اس لیے گوگل کے نتائج کھول دیے۔ سیدھے جواب کے لیے اے آئی آن کر دیجیے۔"
+            ))
+        }
+        return Result(L("Here's what Google has on that.", "गूगल के नतीजे खोल दिए।", "گوگل کے نتائج کھول دیے۔"))
     }
 
     private fun youtube(query: String): Result {

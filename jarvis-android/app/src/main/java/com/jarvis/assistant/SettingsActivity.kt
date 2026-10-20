@@ -172,6 +172,11 @@ class SettingsActivity : AppCompatActivity() {
                 prefs.groqKey = it
                 prefs.groqModels = emptyList()
                 aiMessage = null
+                // A new key means the user wants Groq: switch it on instead of leaving AI off.
+                if (it.isNotBlank() && prefs.aiEngine == Prefs.ENGINE_OFFLINE) {
+                    prefs.aiEngine = Prefs.ENGINE_GROQ
+                    toast("Groq AI is on.")
+                }
                 rebuild()
             }
         }
@@ -286,7 +291,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Voxa 3.2"
+        tv.text = "Voxa 3.3"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER
