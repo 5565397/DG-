@@ -20,7 +20,7 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putInt("unlock_minutes", v).apply()
 
     var language: String
-        get() = sp.getString("language", "en-US") ?: "en-US"
+        get() = sp.getString("language", "ur-PK") ?: "ur-PK"
         set(v) = sp.edit().putString("language", v).apply()
 
     var title: String

@@ -1,4 +1,4 @@
-name: Build Jarvis APK
+name: Build Voxa APK
 
 on:
   push:
@@ -35,19 +35,19 @@ jobs:
         run: gradle assembleDebug
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Jarvis.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Voxa.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Jarvis-APK
-          path: jarvis-android/Jarvis.apk
+          name: Voxa-APK
+          path: jarvis-android/Voxa.apk
 
-      - name: Publish to "jarvis-latest" release (easy phone download)
+      - name: Publish to "voxa-latest" release (easy phone download)
         uses: softprops/action-gh-release@v2
         continue-on-error: true
         with:
-          tag_name: jarvis-latest
-          name: Jarvis (latest build)
+          tag_name: voxa-latest
+          name: Voxa (latest build)
           prerelease: true
-          files: jarvis-android/Jarvis.apk
+          files: jarvis-android/Voxa.apk

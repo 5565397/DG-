@@ -6,7 +6,7 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 
 /**
- * Lets Jarvis read your notifications ("any new messages?") and, if you switch it on,
+ * Lets Voxa read your notifications ("any new messages?") and, if you switch it on,
  * announce incoming chat messages out loud. Only keeps the latest few in memory.
  */
 class JarvisNotificationListener : NotificationListenerService() {
@@ -58,10 +58,16 @@ class JarvisNotificationListener : NotificationListenerService() {
             items.add(item)
             while (items.size > 30) items.removeAt(0)
         }
-        if (sbn.packageName in CHAT_APPS && Prefs(this).announceMessages) {
+        val prefs = Prefs(this)
+        if (sbn.packageName in CHAT_APPS && prefs.announceMessages) {
             val s = speaker ?: Speaker(this).also { speaker = it }
-            val who = if (title.isNotBlank()) "from $title" else ""
-            s.speak("New ${item.app} message $who. ${text.take(120)}")
+            val body = text.take(120)
+            val line = when (Lang.mode(prefs)) {
+                "hi" -> if (title.isNotBlank()) "${item.app} पर $title का मैसेज: $body" else "${item.app} पर नया मैसेज: $body"
+                "ur" -> if (title.isNotBlank()) "${item.app} پر $title کا میسج: $body" else "${item.app} پر نیا میسج: $body"
+                else -> if (title.isNotBlank()) "New ${item.app} message from $title. $body" else "New ${item.app} message. $body"
+            }
+            s.speak(line)
         }
     }
 

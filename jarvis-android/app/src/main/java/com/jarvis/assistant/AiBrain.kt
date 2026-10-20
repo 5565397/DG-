@@ -20,7 +20,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Jarvis's "brain": answers any question with Claude, and can search the web for
+ * Voxa's "brain": answers any question with Claude, and can search the web for
  * fresh facts (news, scores, weather). Keeps a short memory of the conversation so
  * follow-up questions ("and how tall is he?") make sense.
  *
@@ -55,7 +55,7 @@ class AiBrain(context: Context) {
     private fun systemPrompt(): String {
         val now = SimpleDateFormat("EEEE, MMMM d, yyyy, h:mm a", Locale.US).format(Date())
         return """
-            You are Jarvis, a personal voice assistant on the user's Android phone, in the style of Tony Stark's J.A.R.V.I.S.: calm, warm, quick-witted, a little dry British humor, always respectful. Address the user as "${prefs.title}" occasionally, not in every sentence.
+            You are Voxa, a personal voice assistant on the user's Android phone: calm, warm, quick-witted, always respectful, with a light touch of humor. When speaking Hindi or Urdu, Voxa uses feminine grammar for herself (for example "کر رہی ہوں", "कर रही हूँ"). Address the user as "${prefs.title}" occasionally, not in every sentence.
 
             Your reply is read aloud by text-to-speech, so:
             - Answer in plain spoken language. No markdown, bullet points, headings, emojis, URLs, or citation marks.

@@ -19,7 +19,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 
 /**
- * Keeps Jarvis alive in the background: listens for the wake word, checks the voice
+ * Keeps Voxa alive in the background: listens for the wake word, checks the voice
  * lock, runs the command, and speaks the reply.
  */
 class JarvisService : Service(), RecognitionListener {
@@ -124,7 +124,7 @@ class JarvisService : Service(), RecognitionListener {
         val nm = getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL_ID) == null) {
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Jarvis listening", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(CHANNEL_ID, "Voxa listening", NotificationManager.IMPORTANCE_LOW)
             )
         }
         val open = PendingIntent.getActivity(
@@ -135,8 +135,8 @@ class JarvisService : Service(), RecognitionListener {
         )
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_jarvis)
-            .setContentTitle("Jarvis is online")
-            .setContentText(if (wakeMode) "Say \"Jarvis\" followed by a command" else "Ready")
+            .setContentTitle("Voxa is online")
+            .setContentText(if (wakeMode) "Say \"Voxa\" followed by a command" else "Ready")
             .setContentIntent(open)
             .addAction(0, "Stop", stop)
             .setOngoing(true)
@@ -177,7 +177,7 @@ class JarvisService : Service(), RecognitionListener {
         listening = true
         try {
             rec.startListening(intent)
-            JarvisBus.state(JarvisBus.State.LISTENING, if (awaitingCommand) "Listening" else "Say \"Jarvis\"")
+            JarvisBus.state(JarvisBus.State.LISTENING, if (awaitingCommand) "Listening" else "Say \"Voxa\"")
         } catch (e: Exception) {
             listening = false
             resetRecognizer()
@@ -236,7 +236,7 @@ class JarvisService : Service(), RecognitionListener {
             }
             return
         }
-        // Heard something, but nobody called Jarvis.
+        // Heard something, but nobody called Voxa.
         main.postDelayed({ startListening() }, 100)
     }
 

@@ -21,13 +21,13 @@ class CommandParserTest {
 
     // ---------------- Jarvis itself ----------------
 
-    @Test fun stopListening() = check(Action.StopListening, "stop listening", "Go to sleep.", "goodbye", "that's all", "Jarvis, stop")
+    @Test fun stopListening() = check(Action.StopListening, "stop listening", "Go to sleep.", "goodbye", "that's all", "Voxa, stop")
     @Test fun relock() = check(Action.Relock, "lock yourself", "voice lock")
     @Test fun newChat() = check(Action.NewChat, "new conversation", "start over", "forget that")
-    @Test fun greet() = check(Action.Greet, "hello", "Hi Jarvis", "are you there?", "good evening")
+    @Test fun greet() = check(Action.Greet, "hello", "Hi Voxa","are you there?", "good evening")
     @Test fun briefing() = check(Action.Briefing, "good morning", "brief me", "daily briefing", "what's my day look like")
     @Test fun help() = check(Action.Help, "help", "what can you do?")
-    @Test fun thanks() = check(Action.Thanks, "thank you", "thanks jarvis", "good job")
+    @Test fun thanks() = check(Action.Thanks, "thank you", "thanks voxa","good job")
     @Test fun empty() = check(Action.Empty, "", "  ", "please")
 
     // ---------------- Info ----------------
@@ -176,7 +176,7 @@ class CommandParserTest {
     @Test fun calls() {
         assertEquals(Action.Call("mom"), en("call mom"))
         assertEquals(Action.Call("0300 1234567"), en("call 0300 1234567"))
-        assertEquals(Action.Call("ali"), en("Jarvis, can you call Ali now"))
+        assertEquals(Action.Call("ali"), en("Voxa, can you call Ali now"))
     }
 
     @Test fun sms() {
@@ -260,7 +260,7 @@ class CommandParserTest {
         check(Action.StopListening, "सो जाओ", parse = ::hi)
         assertEquals(Action.OpenApp("youtube"), hi("YouTube खोलो"))
         assertEquals(Action.YouTube("अरिजीत के गाने"), hi("अरिजीत के गाने यूट्यूब पर चलाओ"))
-        assertEquals(Action.Remember("चाबी दराज़ में है"), hi("याद रखो कि चाबी दराज़ में है"))
+        assertEquals(Action.Remember(java.text.Normalizer.normalize("चाबी दराज़ में है", java.text.Normalizer.Form.NFC)), hi("याद रखो कि चाबी दराज़ में है"))
     }
 
     @Test fun urduCommands() {
@@ -284,7 +284,8 @@ class CommandParserTest {
 
     @Test fun unmappedHindiGoesToAi() {
         assertTrue(hi("कल मौसम कैसा रहेगा") is Action.Ask)
-        assertTrue(en("अम्मी को कॉल करो") is Action.Ask) // Devanagari name: the AI transliterates it
+        // Names in any script are kept; the phone matches them to contacts by sound.
+        assertEquals(Action.Call("अम्मी"), en("अम्मी को कॉल करो"))
     }
 
     @Test fun englishQuestionAboutLockingDoesNotLock() {

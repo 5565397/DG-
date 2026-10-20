@@ -7,7 +7,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 
-/** Jarvis's voice. Every speak() call reports back when it has finished talking. */
+/** Voxa's voice. Every speak() call reports back when it has finished talking. */
 class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
     companion object {
@@ -19,6 +19,9 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         @Volatile var hindiVoice = false
             private set
         @Volatile var urduVoice = false
+            private set
+        /** False until a speech engine has told us which voices exist. */
+        @Volatile var voicesChecked = false
             private set
     }
 
@@ -40,9 +43,10 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         }
         hindiVoice = tts.isLanguageAvailable(HINDI) >= TextToSpeech.LANG_AVAILABLE
         urduVoice = tts.isLanguageAvailable(URDU) >= TextToSpeech.LANG_AVAILABLE
+        voicesChecked = true
         useLocale(ENGLISH)
         tts.setSpeechRate(1.0f)
-        tts.setPitch(0.92f)
+        tts.setPitch(1.0f)
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) = finish(utteranceId)

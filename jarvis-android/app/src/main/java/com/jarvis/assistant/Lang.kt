@@ -1,7 +1,7 @@
 package com.jarvis.assistant
 
 /**
- * Jarvis's own lines in English, Hindi and Urdu. Urdu falls back to the Hindi
+ * Voxa's own lines in English, Hindi and Urdu. Urdu falls back to the Hindi
  * (Devanagari) wording when the phone has no Urdu text-to-speech voice — spoken
  * aloud the two sound nearly the same.
  */
@@ -17,10 +17,11 @@ object Lang {
         }
     }
 
-    /** "en", "hi" or "ur" — the language Jarvis should talk in. */
+    /** "en", "hi" or "ur" — the language Voxa should talk in. */
     fun mode(prefs: Prefs): String = when {
         prefs.language.startsWith("hi") -> "hi"
-        prefs.language.startsWith("ur") -> if (Speaker.urduVoice) "ur" else "hi"
+        // Without an Urdu voice, Urdu script would be read in silence — use the Hindi voice instead.
+        prefs.language.startsWith("ur") -> if (Speaker.urduVoice || !Speaker.voicesChecked) "ur" else "hi"
         else -> "en"
     }
 
@@ -38,25 +39,25 @@ object Lang {
 
     private fun hindi(line: Line, sir: String) = when (line) {
         Line.YES -> "जी, $sir?"
-        Line.DIDNT_CATCH -> "माफ़ कीजिए $sir, मैं ठीक से सुन नहीं पाया।"
+        Line.DIDNT_CATCH -> "माफ़ कीजिए $sir, मैं ठीक से सुन नहीं पाई।"
         Line.GLITCH -> "सुनने में थोड़ी गड़बड़ हुई। फिर से बोलिए, $sir।"
         Line.VOICE_CHECK -> "आवाज़ की जाँच, $sir। बीप के बाद अपना पासफ़्रेज़ बोलिए।"
         Line.VOICE_DENIED -> "यह आवाज़ पहचानी नहीं गई। इजाज़त नहीं है।"
         Line.MIC_FAIL -> "आवाज़ की जाँच के लिए माइक नहीं मिला। फिर से कोशिश कीजिए, $sir।"
-        Line.NO_BRAIN -> "AI के बिना मैं इस ज़बान में कुछ ही कमांड समझता हूँ, $sir। सेटिंग्स में Claude API key डाल दीजिए।"
+        Line.NO_BRAIN -> "AI के बिना मैं इस ज़बान में कुछ ही कमांड समझती हूँ, $sir। सेटिंग्स में Claude API key डाल दीजिए।"
         Line.CANT_DO -> "यह काम इस फ़ोन पर कैसे करूँ, मुझे पक्का नहीं पता, $sir।"
-        Line.THINKING -> "सोच रहा हूँ..."
+        Line.THINKING -> "सोच रही हूँ..."
     }
 
     private fun urdu(line: Line, sir: String) = when (line) {
         Line.YES -> "جی، $sir؟"
-        Line.DIDNT_CATCH -> "معاف کیجیے $sir، میں ٹھیک سے سن نہیں پایا۔"
+        Line.DIDNT_CATCH -> "معاف کیجیے $sir، میں ٹھیک سے سن نہیں پائی۔"
         Line.GLITCH -> "سننے میں تھوڑی گڑبڑ ہوئی۔ دوبارہ بولیے، $sir۔"
         Line.VOICE_CHECK -> "آواز کی جانچ، $sir۔ بیپ کے بعد اپنا پاس فریز بولیے۔"
         Line.VOICE_DENIED -> "یہ آواز پہچانی نہیں گئی۔ اجازت نہیں ہے۔"
         Line.MIC_FAIL -> "آواز کی جانچ کے لیے مائیک نہیں ملا۔ دوبارہ کوشش کیجیے، $sir۔"
-        Line.NO_BRAIN -> "اے آئی کے بغیر میں اس زبان میں چند ہی کمانڈز سمجھتا ہوں، $sir۔ سیٹنگز میں Claude API key ڈال دیجیے۔"
+        Line.NO_BRAIN -> "اے آئی کے بغیر میں اس زبان میں چند ہی کمانڈز سمجھتی ہوں، $sir۔ سیٹنگز میں Claude API key ڈال دیجیے۔"
         Line.CANT_DO -> "یہ کام اس فون پر کیسے کروں، مجھے پکا نہیں پتا، $sir۔"
-        Line.THINKING -> "سوچ رہا ہوں..."
+        Line.THINKING -> "سوچ رہی ہوں..."
     }
 }

@@ -13,14 +13,14 @@ import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
-/** The one-time steps that give Jarvis its powers, with a live "done" check for each. */
+/** The one-time steps that give Voxa its powers, with a live "done" check for each. */
 object Setup {
 
     enum class Step(val title: String, val subtitle: String) {
-        PERMISSIONS("Microphone, contacts, calls & SMS", "So Jarvis can hear you and reach people"),
+        PERMISSIONS("Microphone, contacts, calls & SMS", "So Voxa can hear you and reach people"),
         PHONE_CONTROL("Phone control", "Tap, scroll, type, screenshots, screen vision"),
         NOTIFICATIONS("Notification access", "Read and announce your messages"),
-        OVERLAY("Display over other apps", "Open apps while Jarvis runs in the background"),
+        OVERLAY("Display over other apps", "Open apps while Voxa runs in the background"),
         BRIGHTNESS("Modify system settings", "Brightness control"),
         BACKGROUND("Run in the background", "Keeps the wake word alive")
     }

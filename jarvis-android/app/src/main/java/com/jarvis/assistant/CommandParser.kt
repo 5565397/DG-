@@ -77,9 +77,9 @@ object CommandParser {
         .trim()
         .trimEnd('.', ' ', '?', '!')
         .removeSuffix(" please")
-        .replace(Regex("^(?:(?:please|can you|could you|would you|will you|jarvis|hey|ok|okay|now) )+"), "")
+        .replace(Regex("^(?:(?:please|can you|could you|would you|will you|voxa|hey|ok|okay|now) )+"), "")
         .trim()
-        .let { if (it == "please" || it == "jarvis") "" else it }
+        .let { if (it == "please" || it == "voxa") "" else it }
 
     fun parse(input: String, nonEnglishMode: Boolean = false): Action {
         val translated = if (nonEnglishMode || Hindustani.isNonLatin(input)) Hindustani.toEnglish(input) else null
@@ -103,18 +103,18 @@ object CommandParser {
         fun m(pattern: String) = Regex(pattern).matchEntire(c)
         var r: MatchResult?
 
-        // ----- Jarvis itself -----
+        // ----- Voxa itself -----
         if (m("(stop listening|go to sleep|sleep|go offline|goodbye|bye|bye bye|shut ?down|stop|that's all|that is all)") != null) return Action.StopListening
-        if (m("(lock|secure) (yourself|jarvis|voice|assistant)|voice lock|lock voice") != null) return Action.Relock
+        if (m("(lock|secure) (yourself|voxa|voice|assistant)|voice lock|lock voice") != null) return Action.Relock
         if (m("(new conversation|new chat|start over|forget (that|it|our conversation)|clear (the )?(chat|conversation))") != null) return Action.NewChat
         if (m("(forget|clear|erase|delete) (everything you remember|your memory|(all )?(your )?memories|what you remember)|clear memory") != null) return Action.ClearMemory
         if (m("(what do you remember|what did i (tell|ask) you to remember|what have i told you|(show|list|read) (your |my )?memor(y|ies))") != null) return Action.Recall
         r = m("(?:remember|note|make a note|save a note|don't forget)(?: that| this)?:? (.+)")
         if (r != null) return Action.Remember(r.groupValues[1])
-        if (m("((daily |morning |my )?briefing|brief me|good morning( jarvis)?|morning report|what's my day( look like)?)") != null) return Action.Briefing
-        if (m("(hello|hi|hey|yo|hello jarvis|hi jarvis|good (afternoon|evening)|you there|are you there|wake up|daddy's home)") != null) return Action.Greet
+        if (m("((daily |morning |my )?briefing|brief me|good morning( voxa)?|morning report|what's my day( look like)?)") != null) return Action.Briefing
+        if (m("(hello|hi|hey|yo|hello voxa|hi voxa|good (afternoon|evening)|you there|are you there|wake up|daddy's home)") != null) return Action.Greet
         if (m("(who are you|what is your name|what's your name|introduce yourself)") != null) return Action.WhoAreYou
-        if (m("(thank you|thanks|thank you jarvis|thanks jarvis|good job|well done|nice work|great job)") != null) return Action.Thanks
+        if (m("(thank you|thanks|thank you voxa|thanks voxa|good job|well done|nice work|great job)") != null) return Action.Thanks
         if (m("(help|what can you do|commands|show commands|what are your features)") != null) return Action.Help
 
         // ----- Time, date, battery -----

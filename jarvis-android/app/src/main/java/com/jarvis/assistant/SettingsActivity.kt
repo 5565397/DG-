@@ -77,8 +77,8 @@ class SettingsActivity : AppCompatActivity() {
             row(card, step.title, step.subtitle, value = if (ok) null else "Set up", icon = if (ok) R.drawable.ic_check else R.drawable.ic_chevron, iconTint = if (ok) R.color.success else R.color.text_tertiary) {
                 if (step == Setup.Step.PERMISSIONS && !ok) permissionLauncher.launch(Setup.runtimePermissions())
                 else {
-                    if (step == Setup.Step.PHONE_CONTROL) toast("Find \"Jarvis phone control\" and turn it on.")
-                    if (step == Setup.Step.NOTIFICATIONS) toast("Turn on \"Jarvis notifications\".")
+                    if (step == Setup.Step.PHONE_CONTROL) toast("Find \"Voxa phone control\" and turn it on.")
+                    if (step == Setup.Step.NOTIFICATIONS) toast("Turn on \"Voxa notifications\".")
                     Setup.open(this, step)
                 }
             }
@@ -88,7 +88,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun buildLanguage() {
         val card = section("LANGUAGE")
         val current = LANGUAGES.firstOrNull { it.second == prefs.language } ?: LANGUAGES[0]
-        row(card, "Speak with Jarvis in", null, value = current.first) {
+        row(card, "Speak with Voxa in", null, value = current.first) {
             val labels = LANGUAGES.map { it.first }.toTypedArray()
             val checked = LANGUAGES.indexOf(current)
             MaterialAlertDialogBuilder(this)
@@ -107,9 +107,9 @@ class SettingsActivity : AppCompatActivity() {
             val subtitle = when {
                 hindiVoice == null -> "Checking the phone's voices…"
                 wantUrdu && urduVoice == true -> "Urdu voice installed."
-                wantUrdu && hindiVoice == true -> "No Urdu voice, so Jarvis speaks Urdu with the Hindi voice. They sound almost the same."
+                wantUrdu && hindiVoice == true -> "No Urdu voice, so Voxa speaks Urdu with the Hindi voice. They sound almost the same."
                 hasVoice -> "Hindi voice installed."
-                else -> "No voice for this language yet. Tap to download it, or Jarvis stays silent."
+                else -> "No voice for this language yet. Tap to download it, or Voxa stays silent."
             }
             row(card, "Voice for this language", subtitle, icon = if (hasVoice) R.drawable.ic_check else R.drawable.ic_chevron, iconTint = if (hasVoice) R.color.success else R.color.text_tertiary) {
                 try {
@@ -123,7 +123,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun buildVoiceLock() {
         val card = section("VOICE LOCK")
-        switchRow(card, "Only obey my voice", "Jarvis checks your voice before acting, then stays unlocked for ${prefs.unlockMinutes} min.", prefs.lockEnabled) { on ->
+        switchRow(card, "Only obey my voice", "Voxa checks your voice before acting, then stays unlocked for ${prefs.unlockMinutes} min.", prefs.lockEnabled) { on ->
             if (on && !prefs.hasVoiceprint()) {
                 toast("Record your voice first.")
                 false
@@ -166,8 +166,8 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun buildPersonal() {
         val card = section("PERSONAL")
-        row(card, "What Jarvis calls you", null, value = prefs.title) {
-            textDialog("What should Jarvis call you?", "sir", prefs.title, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS) {
+        row(card, "What Voxa calls you", null, value = prefs.title) {
+            textDialog("What should Voxa call you?", "sir", prefs.title, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS) {
                 prefs.title = it.ifBlank { "sir" }
                 rebuild()
             }
@@ -184,10 +184,10 @@ class SettingsActivity : AppCompatActivity() {
                 rebuild()
             }
         }
-        switchRow(card, "Announce new messages", "Jarvis reads incoming WhatsApp, SMS and chat messages aloud.", prefs.announceMessages) { on ->
+        switchRow(card, "Announce new messages", "Voxa reads incoming WhatsApp, SMS and chat messages aloud.", prefs.announceMessages) { on ->
             prefs.announceMessages = on
             if (on && !Setup.isDone(this, Setup.Step.NOTIFICATIONS)) {
-                toast("Turn on \"Jarvis notifications\".")
+                toast("Turn on \"Voxa notifications\".")
                 Setup.open(this, Setup.Step.NOTIFICATIONS)
             }
             true
@@ -197,7 +197,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun buildMemory() {
         val card = section("MEMORY")
         val memories = prefs.memories
-        row(card, "Things I remember", if (memories.isEmpty()) "Say \"Jarvis, remember that…\"" else "${memories.size} saved", value = null) {
+        row(card, "Things I remember", if (memories.isEmpty()) "Say \"Voxa, remember that…\"" else "${memories.size} saved", value = null) {
             if (memories.isEmpty()) {
                 toast("Nothing saved yet.")
                 return@row
@@ -227,7 +227,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Jarvis 2.0"
+        tv.text = "Voxa 3.0"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER
@@ -241,7 +241,7 @@ class SettingsActivity : AppCompatActivity() {
     // =================================================================
 
     private fun section(title: String): LinearLayout {
-        val header = TextView(this, null, 0, R.style.Jarvis_SectionTitle)
+        val header = TextView(this, null, 0, R.style.Voxa_SectionTitle)
         header.text = title
         content.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(if (content.childCount == 0) 8 else 28)
@@ -398,7 +398,7 @@ class SettingsActivity : AppCompatActivity() {
             while (samples.size < 3 && attempts < 6) {
                 attempts++
                 val n = samples.size + 1
-                setVoiceMessage("Sample $n of 3 — after the beep, say: \"Jarvis, this is my voice. Unlock.\"")
+                setVoiceMessage("Sample $n of 3 — after the beep, say: \"Voxa, this is my voice. Unlock.\"")
                 Thread.sleep(1400)
                 VoicePrint.beep()
                 setVoiceMessage("Recording sample $n… speak now")
@@ -469,7 +469,7 @@ class SettingsActivity : AppCompatActivity() {
         Thread {
             val reply = AiBrain(this).ask("Connection test. Reply with exactly one word: Online")
             runOnUiThread {
-                aiMessage = if (reply.speech.contains("online", ignoreCase = true)) "Connected. Jarvis's AI brain is online." else reply.speech
+                aiMessage = if (reply.speech.contains("online", ignoreCase = true)) "Connected. Voxa's AI brain is online." else reply.speech
                 rebuild()
             }
         }.start()
@@ -505,7 +505,7 @@ class SettingsActivity : AppCompatActivity() {
         )
 
         private val HELP_TEXT = """
-            Start with "Jarvis" when Hey Jarvis is on, or tap the orb.
+            Start with "Voxa" when Hey Voxa is on, or tap the orb.
 
             ASK ANYTHING (AI key)
             "Who won the match last night?" · "Explain black holes simply" · then a follow-up without the wake word. "New conversation" starts fresh.
@@ -540,7 +540,7 @@ class SettingsActivity : AppCompatActivity() {
             HINDI / URDU
             "टॉर्च जलाओ" · "آواز بڑھاؤ" · "YouTube kholo" · "मेरे मैसेज पढ़ो" · "یاد رکھو کہ چابی دراز میں ہے" — with the AI key, anything at all.
 
-            JARVIS
+            VOXA
             "Lock yourself" · "Stop listening" · "Help"
         """.trimIndent()
     }

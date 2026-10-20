@@ -38,9 +38,9 @@
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
-        android:label="Jarvis"
+        android:label="Voxa"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Jarvis">
+        android:theme="@style/Theme.Voxa">
 
         <activity
             android:name=".MainActivity"
@@ -66,7 +66,7 @@
         <service
             android:name=".JarvisNotificationListener"
             android:exported="true"
-            android:label="Jarvis notifications"
+            android:label="Voxa notifications"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
@@ -76,7 +76,7 @@
         <service
             android:name=".JarvisAccessibilityService"
             android:exported="true"
-            android:label="Jarvis phone control"
+            android:label="Voxa phone control"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

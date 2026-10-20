@@ -14,7 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
-/** The main screen: one orb, what you said, what Jarvis said. Everything else lives in Settings. */
+/** The main screen: one orb, what you said, what Voxa said. Everything else lives in Settings. */
 class MainActivity : AppCompatActivity(), JarvisBus.Listener {
 
     private lateinit var orb: OrbView
@@ -173,7 +173,7 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
 
     private fun renderWake(on: Boolean) {
         chipWake.setBackgroundResource(if (on) R.drawable.pill_active else R.drawable.pill)
-        txtWake.text = if (on) "Hey Jarvis · On" else "Hey Jarvis · Off"
+        txtWake.text = if (on) "Hey Voxa · On" else "Hey Voxa · Off"
         txtWake.setTextColor(ContextCompat.getColor(this, if (on) R.color.text_primary else R.color.text_secondary))
         wakeDot.alpha = if (on) 1f else 0.25f
     }
@@ -189,12 +189,17 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
 
     private fun greeting(): String {
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-        val part = when {
-            hour < 5 -> "Good evening"
-            hour < 12 -> "Good morning"
-            hour < 17 -> "Good afternoon"
-            else -> "Good evening"
+        val prefs = Prefs(this)
+        val isSir = prefs.title.equals("sir", true)
+        return when (Lang.mode(prefs)) {
+            "ur" -> (if (hour in 4..11) "صبح بخیر" else if (hour in 12..16) "السلام علیکم" else "شام بخیر") + "، " + (if (isSir) "سر" else prefs.title)
+            "hi" -> (if (hour in 4..11) "सुप्रभात" else if (hour in 12..16) "नमस्ते" else "शुभ संध्या") + ", " + (if (isSir) "सर" else prefs.title)
+            else -> (when {
+                hour < 5 -> "Good evening"
+                hour < 12 -> "Good morning"
+                hour < 17 -> "Good afternoon"
+                else -> "Good evening"
+            }) + ", ${prefs.title}."
         }
-        return "$part, ${Prefs(this).title}."
     }
 }

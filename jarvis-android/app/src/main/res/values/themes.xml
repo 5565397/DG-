@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Jarvis" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="Theme.Voxa" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/accent</item>
         <item name="colorOnPrimary">#04121C</item>
         <item name="colorPrimaryContainer">@color/surface_raised</item>
@@ -19,7 +19,7 @@
         <item name="android:textColorHint">@color/text_tertiary</item>
     </style>
 
-    <style name="Jarvis.SectionTitle" parent="">
+    <style name="Voxa.SectionTitle" parent="">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_marginTop">28dp</item>

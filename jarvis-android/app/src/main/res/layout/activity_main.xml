@@ -21,7 +21,7 @@
             android:layout_weight="1"
             android:fontFamily="sans-serif-medium"
             android:letterSpacing="0.42"
-            android:text="JARVIS"
+            android:text="VOXA"
             android:textColor="@color/text_primary"
             android:textSize="13sp" />
 
@@ -69,7 +69,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Finish setting up Jarvis"
+                android:text="Finish setting up Voxa"
                 android:textColor="@color/text_primary"
                 android:textSize="14sp" />
 
@@ -102,7 +102,7 @@
             android:layout_width="280dp"
             android:layout_height="280dp"
             android:clickable="true"
-            android:contentDescription="Tap to speak to Jarvis"
+            android:contentDescription="Tap to speak to Voxa"
             android:focusable="true" />
 
         <TextView
@@ -167,7 +167,7 @@
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:background="@null"
-            android:hint="Type to Jarvis"
+            android:hint="Type to Voxa"
             android:imeOptions="actionSend"
             android:inputType="textCapSentences"
             android:textColor="@color/text_primary"
@@ -217,7 +217,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="10dp"
-                android:text="Hey Jarvis · Off"
+                android:text="Hey Voxa · Off"
                 android:textColor="@color/text_secondary"
                 android:textSize="13sp" />
         </LinearLayout>
