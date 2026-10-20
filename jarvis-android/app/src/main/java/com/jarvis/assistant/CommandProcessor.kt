@@ -56,7 +56,8 @@ class CommandProcessor(private val ctx: Context) {
 
     private val prefs = Prefs(ctx)
     private val main = Handler(Looper.getMainLooper())
-    private val hasBrain: Boolean get() = prefs.apiKey.isNotBlank()
+    /** An online AI (Groq or Claude) is switched on; otherwise Voxa works fully offline. */
+    private val hasBrain: Boolean get() = prefs.aiActive
     private val a11y: JarvisAccessibilityService? get() = JarvisAccessibilityService.instance
 
     // ---------------------------------------------------------------- language

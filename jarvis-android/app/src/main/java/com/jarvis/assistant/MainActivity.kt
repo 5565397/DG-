@@ -71,6 +71,20 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
                 }
             }
         }
+        findViewById<LinearLayout>(R.id.chipAi).setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            val prefs = Prefs(this)
+            when {
+                prefs.aiActive -> prefs.aiEngine = Prefs.ENGINE_OFFLINE
+                prefs.groqKey.isNotBlank() -> prefs.aiEngine = Prefs.ENGINE_GROQ
+                prefs.apiKey.isNotBlank() -> prefs.aiEngine = Prefs.ENGINE_CLAUDE
+                else -> {
+                    android.widget.Toast.makeText(this, "Add your Groq API key in Settings → AI Brain.", android.widget.Toast.LENGTH_LONG).show()
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                }
+            }
+            renderAi()
+        }
         findViewById<ImageButton>(R.id.btnKeyboard).setOnClickListener { toggleKeyboard() }
         findViewById<ImageButton>(R.id.btnSend).setOnClickListener { runTyped() }
         inputCommand.setOnEditorActionListener { _, actionId, _ ->
@@ -95,7 +109,24 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         if (JarvisBus.lastReply.isNotBlank()) txtReply.text = JarvisBus.lastReply
         if (txtReply.text.isNullOrBlank()) txtReply.text = greeting()
         renderWake(isWakeOn())
+        renderAi()
         refreshSetupBanner()
+    }
+
+    /** "AI · Groq" when online AI is on, "AI · Off" when Voxa runs fully offline. */
+    private fun renderAi() {
+        val prefs = Prefs(this)
+        val on = prefs.aiActive
+        val chip = findViewById<LinearLayout>(R.id.chipAi)
+        val label = findViewById<TextView>(R.id.txtAi)
+        chip.setBackgroundResource(if (on) R.drawable.pill_active else R.drawable.pill)
+        label.text = when {
+            !on -> "AI · Off"
+            prefs.aiEngine == Prefs.ENGINE_GROQ -> "AI · Groq"
+            else -> "AI · Claude"
+        }
+        label.setTextColor(ContextCompat.getColor(this, if (on) R.color.text_primary else R.color.text_secondary))
+        findViewById<View>(R.id.aiDot).alpha = if (on) 1f else 0.25f
     }
 
     override fun onPause() {

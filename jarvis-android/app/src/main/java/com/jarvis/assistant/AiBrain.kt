@@ -20,16 +20,17 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Voxa's "brain": answers any question with Claude, and can search the web for
- * fresh facts (news, scores, weather). Keeps a short memory of the conversation so
- * follow-up questions ("and how tall is he?") make sense.
+ * Voxa's online "brain": answers any question using the engine picked in Settings —
+ * Groq (fast, free tier) or Claude (with web search and the strongest vision). Keeps a
+ * short memory of the conversation so follow-ups ("and how tall is he?") make sense.
+ * With the engine set to offline it is never called.
  *
  * Network call — always run [ask] off the main thread.
  */
 class AiBrain(context: Context) {
 
     /** What Claude said: either something to speak, or a phone command to run. */
-    data class Reply(val speech: String, val command: String? = null)
+    data class Reply(val speech: String, val command: String? = null, val failed: Boolean = false)
 
     private val prefs = Prefs(context)
     private var client: AnthropicClient? = null
@@ -38,7 +39,8 @@ class AiBrain(context: Context) {
     /** Alternating user / assistant turns. */
     private val history = ArrayList<Pair<String, String>>()
 
-    val hasKey: Boolean get() = prefs.apiKey.isNotBlank()
+    val hasKey: Boolean get() = prefs.aiActive
+    private val groq = GroqClient(prefs)
 
     fun forget() = synchronized(history) { history.clear() }
 
@@ -61,7 +63,7 @@ class AiBrain(context: Context) {
             - Answer in plain spoken language. No markdown, bullet points, headings, emojis, URLs, or citation marks.
             - Keep it short: usually one to three sentences. Go longer only if the user asks for detail, a story, or step-by-step help, and even then stay under about 150 words.
             - Lead with the answer. Write numbers and units the way a person would say them.
-            - Use web search for anything current or time-sensitive (news, sports scores, weather, prices, recent events), then give the answer in a sentence or two.
+            - ${webRule()}
             - If you're not sure, say so briefly instead of guessing.
 
             ${languageRule()}
@@ -73,6 +75,22 @@ class AiBrain(context: Context) {
             Current date and time on the phone: $now.
         """.trimIndent() + personalContext().let { if (it.isEmpty()) "" else "\n\n$it" }
     }
+
+    private fun webRule(): String =
+        if (prefs.aiEngine == Prefs.ENGINE_CLAUDE) "Use web search for anything current or time-sensitive (news, sports scores, weather, prices, recent events), then give the answer in a sentence or two."
+        else "For anything current or time-sensitive (news, scores, weather, prices), use web results if you have them; if you don't, say briefly that you can't check live information right now."
+
+    private fun t(en: String, hi: String, ur: String) = when (Lang.mode(prefs)) {
+        "hi" -> hi
+        "ur" -> ur
+        else -> en
+    }
+
+    private val timeSensitive = Regex(
+        "weather|news|today|tonight|tomorrow|latest|score|match|price|rate|stock|who won|current|right now|" +
+            "موسم|خبر|آج|کل|میچ|قیمت|ریٹ|سکور|اسکور|تازہ|मौसम|खबर|ख़बर|आज|कल|मैच|कीमत|स्कोर|ताज़ा|mausam|khabar|aaj",
+        RegexOption.IGNORE_CASE
+    )
 
     private fun languageRule(): String = when (Lang.mode(prefs)) {
         "hi" -> "Language: the user has chosen Hindi. Always reply in natural, conversational spoken Hindi (Hindustani) written in Devanagari script, whatever language the question is in. Common English words like phone, app or internet are fine, written in Devanagari. Call the user \"सर\" if their title is sir."
@@ -93,8 +111,45 @@ class AiBrain(context: Context) {
 
     /** Returns what to speak, or a phone command to run. Never throws. [screenJpeg] is an optional base64 screenshot. */
     fun ask(question: String, screenJpeg: String? = null): Reply {
-        if (!hasKey) return Reply(Lang.get(prefs, Lang.Line.NO_BRAIN))
+        if (!hasKey) return Reply(Lang.get(prefs, Lang.Line.NO_BRAIN), failed = true)
+        val raw = when (prefs.aiEngine) {
+            Prefs.ENGINE_GROQ -> askGroq(question, screenJpeg)
+            else -> askClaude(question, screenJpeg)
+        }
+        if (raw.error != null) return Reply(raw.error, failed = true)
+        val text = raw.text.replace(Regex("<think>[\\s\\S]*?</think>"), "").trim()
+        val command = Regex("(?m)^\\s*CMD:\\s*(.+)$").find(text)?.groupValues?.get(1)?.trim()
+        val answer = if (command != null) "" else cleanForSpeech(text)
+        if (command == null && answer.isBlank()) return Reply(t("I came up empty on that one, ${prefs.title}.", "इसका जवाब नहीं मिला।", "اس کا جواب نہیں ملا۔"))
 
+        synchronized(history) {
+            history.add((if (screenJpeg != null) "[about my screen] $question" else question) to (if (command != null) "CMD: $command" else answer))
+            while (history.size > 8) history.removeAt(0)
+        }
+        return Reply(answer, command)
+    }
+
+    private class Raw(val text: String = "", val error: String? = null)
+
+    private fun askGroq(question: String, screenJpeg: String?): Raw {
+        val past = synchronized(history) {
+            history.flatMap { (q, a) -> listOf(GroqClient.Msg("user", q), GroqClient.Msg("assistant", a)) }
+        }
+        val prompt = if (screenJpeg != null) "This is a screenshot of my phone screen right now. $question" else question
+        return try {
+            Raw(groq.chat(systemPrompt(), past, prompt, screenJpeg, needsWeb = timeSensitive.containsMatchIn(question)))
+        } catch (e: GroqClient.GroqException) {
+            Raw(error = when (e.code) {
+                401, 403 -> t("My Groq key was rejected, ${prefs.title}. Please check it in Settings.", "Groq की key काम नहीं कर रही। सेटिंग्स में देख लीजिए।", "Groq کی key کام نہیں کر رہی۔ سیٹنگز میں دیکھ لیجیے۔")
+                429 -> t("Groq says I'm asking too fast. Give me a moment and try again.", "Groq की लिमिट पूरी हो गई। थोड़ी देर बाद पूछिए।", "Groq کی حد پوری ہو گئی۔ تھوڑی دیر بعد پوچھیے۔")
+                else -> t("My Groq service had a problem. Error ${e.code}.", "Groq में दिक़्क़त आई। एरर ${e.code}।", "Groq میں مسئلہ آیا۔ ایرر ${e.code}۔")
+            })
+        } catch (e: Exception) {
+            Raw(error = t("I couldn't reach Groq. Check the internet connection, ${prefs.title}.", "Groq से कनेक्ट नहीं हो पाई। इंटरनेट देख लीजिए।", "Groq سے رابطہ نہیں ہو سکا۔ انٹرنیٹ دیکھ لیجیے۔"))
+        }
+    }
+
+    private fun askClaude(question: String, screenJpeg: String?): Raw {
         val builder = MessageCreateParams.builder()
             .model("claude-opus-5-5")
             .maxTokens(4096L)
@@ -137,28 +192,19 @@ class AiBrain(context: Context) {
                 parts.append(' ').append(textOf(response))
                 rounds++
             }
-
             if (response.stopReason().orElse(null) == StopReason.REFUSAL) {
-                return Reply("I'm afraid I can't help with that one, ${prefs.title}.")
+                Raw(error = t("I'm afraid I can't help with that one, ${prefs.title}.", "माफ़ कीजिए, इसमें मदद नहीं कर सकती।", "معاف کیجیے، اس میں مدد نہیں کر سکتی۔"))
+            } else {
+                Raw(parts.toString())
             }
-            val raw = parts.toString().trim()
-            val command = Regex("(?m)^\\s*CMD:\\s*(.+)$").find(raw)?.groupValues?.get(1)?.trim()
-            val answer = if (command != null) "" else cleanForSpeech(raw)
-            if (command == null && answer.isBlank()) return Reply("I came up empty on that one, ${prefs.title}.")
-
-            synchronized(history) {
-                history.add((if (screenJpeg != null) "[about my screen] $question" else question) to (if (command != null) "CMD: $command" else answer))
-                while (history.size > 8) history.removeAt(0)
-            }
-            Reply(answer, command)
         } catch (e: UnauthorizedException) {
-            Reply("My API key was rejected, ${prefs.title}. Please check it in my settings.")
+            Raw(error = t("My Claude key was rejected, ${prefs.title}. Please check it in Settings.", "Claude की key काम नहीं कर रही।", "Claude کی key کام نہیں کر رہی۔"))
         } catch (e: RateLimitException) {
-            Reply("I'm being rate limited right now. Give me a moment and ask again.")
+            Raw(error = t("I'm being rate limited right now. Give me a moment and ask again.", "अभी लिमिट पूरी हो गई। थोड़ी देर बाद पूछिए।", "ابھی حد پوری ہو گئی۔ تھوڑی دیر بعد پوچھیے۔"))
         } catch (e: AnthropicServiceException) {
-            Reply("My AI service had a problem. Error ${e.statusCode()}.")
+            Raw(error = t("My AI service had a problem. Error ${e.statusCode()}.", "AI में दिक़्क़त आई। एरर ${e.statusCode()}।", "اے آئی میں مسئلہ آیا۔ ایرر ${e.statusCode()}۔"))
         } catch (e: Exception) {
-            Reply("I couldn't reach my AI brain. Check the internet connection, ${prefs.title}.")
+            Raw(error = t("I couldn't reach my AI brain. Check the internet connection, ${prefs.title}.", "AI से कनेक्ट नहीं हो पाई। इंटरनेट देख लीजिए।", "اے آئی سے رابطہ نہیں ہو سکا۔ انٹرنیٹ دیکھ لیجیے۔"))
         }
     }
 

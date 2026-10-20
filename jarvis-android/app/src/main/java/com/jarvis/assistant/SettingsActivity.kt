@@ -144,16 +144,62 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun buildAi() {
         val card = section("AI BRAIN")
-        val key = prefs.apiKey
-        val masked = if (key.isBlank()) "Not set" else "•••• " + key.takeLast(4)
-        row(card, "Claude API key", "Answers any question, sees your screen, understands Hindi and Urdu. Get a key at console.anthropic.com.", value = masked) {
-            textDialog("Claude API key", "sk-ant-…", key, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) {
-                prefs.apiKey = it
+        val engine = prefs.aiEngine
+        val groqOn = engine == Prefs.ENGINE_GROQ
+        switchRow(
+            card, "Online AI · Groq",
+            if (groqOn) "On — Voxa answers anything through Groq, in Urdu, Hindi or English."
+            else "Off — Voxa works offline with its built-in Urdu, Hindi and English commands.",
+            groqOn
+        ) { on ->
+            when {
+                on && prefs.groqKey.isBlank() -> {
+                    keyDialog("Groq API key", "gsk_…", "") { key ->
+                        if (key.isNotBlank()) {
+                            prefs.groqKey = key
+                            prefs.aiEngine = Prefs.ENGINE_GROQ
+                        }
+                        rebuild()
+                    }
+                    false
+                }
+                on -> { prefs.aiEngine = Prefs.ENGINE_GROQ; aiMessage = null; rebuild(); true }
+                else -> { prefs.aiEngine = Prefs.ENGINE_OFFLINE; aiMessage = null; rebuild(); true }
+            }
+        }
+        row(card, "Groq API key", "Free key from console.groq.com. Saved only on this phone.", value = mask(prefs.groqKey)) {
+            keyDialog("Groq API key", "gsk_…", prefs.groqKey) {
+                prefs.groqKey = it
+                prefs.groqModels = emptyList()
                 aiMessage = null
                 rebuild()
             }
         }
-        if (key.isNotBlank()) {
+        if (prefs.groqKey.isNotBlank()) {
+            row(card, "Groq model", "Automatic picks the best model your key can use.", value = prefs.groqModel.ifBlank { "Automatic" }) { chooseGroqModel() }
+        }
+        row(card, "AI engine", "Offline, Groq, or Claude (needs its own key).", value = ENGINES.first { it.second == engine }.first) {
+            val labels = ENGINES.map { it.first }.toTypedArray()
+            MaterialAlertDialogBuilder(this)
+                .setTitle("AI engine")
+                .setSingleChoiceItems(labels, ENGINES.indexOfFirst { it.second == engine }) { dialog, which ->
+                    prefs.aiEngine = ENGINES[which].second
+                    aiMessage = null
+                    dialog.dismiss()
+                    rebuild()
+                }
+                .show()
+        }
+        if (engine == Prefs.ENGINE_CLAUDE || prefs.apiKey.isNotBlank()) {
+            row(card, "Claude API key", "From console.anthropic.com. Adds live web search.", value = mask(prefs.apiKey)) {
+                keyDialog("Claude API key", "sk-ant-…", prefs.apiKey) {
+                    prefs.apiKey = it
+                    aiMessage = null
+                    rebuild()
+                }
+            }
+        }
+        if (prefs.aiActive) {
             row(card, "Test connection", aiMessage ?: "Sends one tiny request.") { testAi() }
         }
         row(card, "Home city", "For weather, news and anything local.", value = prefs.city.ifBlank { "Not set" }) {
@@ -227,7 +273,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Voxa 3.0"
+        tv.text = "Voxa 3.1"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER
@@ -364,6 +410,64 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun mask(key: String) = if (key.isBlank()) "Not set" else "•••• " + key.takeLast(4)
+
+    /** Like [textDialog], with a Paste button — keys are long and awkward to type. */
+    private fun keyDialog(title: String, hint: String, value: String, onSave: (String) -> Unit) {
+        val input = EditText(this)
+        input.setText(value)
+        input.hint = hint
+        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        input.setSelection(input.text.length)
+        val frame = FrameLayout(this)
+        frame.setPadding(dp(24), dp(8), dp(24), 0)
+        frame.addView(input)
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setView(frame)
+            .setPositiveButton("Save") { _, _ -> onSave(input.text.toString().trim()) }
+            .setNegativeButton("Cancel", null)
+            .setNeutralButton("Paste", null)
+            .show()
+        // Keep the dialog open when Paste is tapped.
+        dialog.getButton(android.content.DialogInterface.BUTTON_NEUTRAL).setOnClickListener {
+            val clip = getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
+            val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()?.trim()
+            if (text.isNullOrBlank()) toast("Clipboard is empty.") else {
+                input.setText(text)
+                input.setSelection(input.text.length)
+            }
+        }
+    }
+
+    private fun chooseGroqModel() {
+        toast("Loading Groq models…")
+        Thread {
+            val models = try {
+                GroqClient(prefs).models(forceRefresh = true)
+            } catch (e: Exception) {
+                null
+            }
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                if (models.isNullOrEmpty()) {
+                    toast("Couldn't load models. Check the key and the internet.")
+                    return@runOnUiThread
+                }
+                val options = listOf("Automatic") + models
+                val checked = if (prefs.groqModel.isBlank()) 0 else options.indexOf(prefs.groqModel).coerceAtLeast(0)
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Groq model")
+                    .setSingleChoiceItems(options.toTypedArray(), checked) { dialog, which ->
+                        prefs.groqModel = if (which == 0) "" else options[which]
+                        dialog.dismiss()
+                        rebuild()
+                    }
+                    .show()
+            }
+        }.start()
+    }
+
     // =================================================================
     // Actions
     // =================================================================
@@ -464,12 +568,15 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun testAi() {
-        aiMessage = "Contacting Claude…"
+        val groq = prefs.aiEngine == Prefs.ENGINE_GROQ
+        aiMessage = if (groq) "Contacting Groq…" else "Contacting Claude…"
         rebuild()
         Thread {
-            val reply = AiBrain(this).ask("Connection test. Reply with exactly one word: Online")
+            val reply = AiBrain(this).ask("Connection test. Reply with one short word.")
+            val model = if (groq) (try { GroqClient(prefs).currentModel() } catch (e: Exception) { null }) else "claude-opus-5-5"
             runOnUiThread {
-                aiMessage = if (reply.speech.contains("online", ignoreCase = true)) "Connected. Voxa's AI brain is online." else reply.speech
+                aiMessage = if (reply.failed) reply.speech
+                else "Connected ✓  ${if (groq) "Groq" else "Claude"} is online${model?.let { " · $it" } ?: ""}."
                 rebuild()
             }
         }.start()
@@ -496,6 +603,12 @@ class SettingsActivity : AppCompatActivity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     companion object {
+        private val ENGINES = listOf(
+            "Offline (built-in commands only)" to Prefs.ENGINE_OFFLINE,
+            "Groq" to Prefs.ENGINE_GROQ,
+            "Claude" to Prefs.ENGINE_CLAUDE
+        )
+
         private val LANGUAGES = listOf(
             "English (US)" to "en-US",
             "English (South Asian accent)" to "en-IN",

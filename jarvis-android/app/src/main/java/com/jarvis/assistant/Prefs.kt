@@ -36,6 +36,40 @@ class Prefs(context: Context) {
         get() = sp.getString("api_key", "") ?: ""
         set(v) = sp.edit().putString("api_key", v).apply()
 
+    /** Groq API key (console.groq.com). Stored only on this phone. */
+    var groqKey: String
+        get() = sp.getString("groq_key", "") ?: ""
+        set(v) = sp.edit().putString("groq_key", v).apply()
+
+    /** Groq model the user picked; blank = choose automatically. */
+    var groqModel: String
+        get() = sp.getString("groq_model", "") ?: ""
+        set(v) = sp.edit().putString("groq_model", v).apply()
+
+    var groqModels: List<String>
+        get() = (sp.getString("groq_models", "") ?: "").split(',').filter { it.isNotBlank() }
+        set(v) = sp.edit().putString("groq_models", v.joinToString(",")).apply()
+
+    var groqModelsAt: Long
+        get() = sp.getLong("groq_models_at", 0L)
+        set(v) = sp.edit().putLong("groq_models_at", v).apply()
+
+    /**
+     * Where questions go: "offline" (no AI, local commands only), "groq" or "claude".
+     * Existing users with a Claude key keep Claude until they switch.
+     */
+    var aiEngine: String
+        get() = sp.getString("ai_engine", null) ?: if (apiKey.isNotBlank()) ENGINE_CLAUDE else ENGINE_OFFLINE
+        set(v) = sp.edit().putString("ai_engine", v).apply()
+
+    /** True when an online AI is switched on and has a key. */
+    val aiActive: Boolean
+        get() = when (aiEngine) {
+            ENGINE_GROQ -> groqKey.isNotBlank()
+            ENGINE_CLAUDE -> apiKey.isNotBlank()
+            else -> false
+        }
+
     /** Optional home city, for weather and local answers. */
     var city: String
         get() = sp.getString("city", "") ?: ""
@@ -70,7 +104,10 @@ class Prefs(context: Context) {
 
     fun hasVoiceprint() = voiceprints.isNotEmpty()
 
-    private companion object {
-        const val SEP = "\u001F"
+    companion object {
+        private const val SEP = "\u001F"
+        const val ENGINE_OFFLINE = "offline"
+        const val ENGINE_GROQ = "groq"
+        const val ENGINE_CLAUDE = "claude"
     }
 }
