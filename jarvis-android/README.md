@@ -1,38 +1,34 @@
-# Jarvis — voice assistant for Android
+# Voxa — voice assistant for Android
 
-A Jarvis-style assistant that listens for "Jarvis", checks that it's your voice, and controls the phone.
+Say "Voxa" (or "ووکسا" / "वोक्सा") and control your phone by voice in Urdu, Hindi or English.
 
 ## Get the APK
-Every push to `jarvis-android/` builds the app on GitHub Actions.
-- **Easiest:** open the repo's **Releases** page → *Jarvis (latest build)* → download `Jarvis.apk`.
-- **Or:** **Actions** tab → *Build Jarvis APK* → latest run → *Artifacts* → `Jarvis-APK` (a zip with the APK inside).
+Every push to `jarvis-android/` runs the command tests and builds the app on GitHub Actions.
+- **Easiest:** Releases → *Voxa (latest build)* → `Voxa.apk`
+  (direct link: `https://github.com/5565397/DG-/releases/download/voxa-latest/Voxa.apk`)
+- **Or:** Actions → *Build Voxa APK* → latest run → Artifacts → `Voxa-APK`.
 
-Install it on the phone (allow "Install unknown apps" for your browser/file manager).
+## What works without any API key
+Speech recognition (Google's free recognizer) and speech output (the phone's text-to-speech voice) need no key.
+All phone commands are understood offline in Urdu, Hindi, Roman Urdu/Hindi and English:
+apps (by Urdu/Hindi name too), calls and SMS/WhatsApp to contacts (names matched across scripts by sound),
+alarms with spoken times ("شام ساڑھے پانچ بجے"), timers, reminders, memory, flashlight, volume, brightness,
+quick-settings toggles, media, YouTube, navigation, screenshots, lock, notifications, screen reading.
+Replies are spoken in the chosen language. Anything else opens a Google search.
 
-## First-time setup (inside the app)
-1. Grant microphone, contacts, calls, SMS.
-2. Enable **Jarvis phone control** in Accessibility settings (needed for tapping, scrolling, typing, screenshots, lock screen, and launching apps from the background).
-3. Allow *Display over other apps*.
-4. Allow *Modify system settings* (brightness).
-5. Turn off battery optimization for Jarvis (keeps the wake word alive).
+An optional Claude API key adds open-ended answers, screen vision and the weather/news briefing.
 
-Optional — **AI brain:** paste a Claude API key (console.anthropic.com → API Keys) into *Preferences* and tap Save. Questions and anything Jarvis doesn't recognize as a phone command go to Claude (`claude-opus-5-5`, low effort, with web search for current facts). Usage is billed to your Anthropic account.
+## First-time setup (in the app → Settings)
+Finish the six Setup rows, pick the language, and install the Urdu/Hindi voice if Settings says it's missing.
 
-Then: **Record my voice** → **Test a voice** → turn on **Only obey my voice** → turn on **Always listen for "Jarvis"**.
-
-## How it works
+## Code map
 | Part | File |
 |---|---|
-| Wake word + listening loop (foreground service) | `JarvisService.kt` |
-| Command understanding and actions | `CommandProcessor.kt` |
-| Tapping, scrolling, typing, global actions | `JarvisAccessibilityService.kt` |
-| AI answers (Claude API via the Java SDK) | `AiBrain.kt` |
-| Offline voiceprint (MFCC + cosine similarity) | `VoicePrint.kt` |
-| Speech output | `Speaker.kt` |
-| UI | `MainActivity.kt`, `res/layout/activity_main.xml` |
-
-## Honest limits
-- Speech recognition uses the phone's Google speech service; commands are English.
-- The voice lock is a basic offline voiceprint. It stops other people casually giving orders, but a recording of your voice can fool it. Keep your normal screen lock on.
-- Android does not let normal apps toggle Wi-Fi (Android 10+) or mobile data directly; Jarvis uses the Quick Settings tile through Accessibility or opens the right settings panel.
-- The always-listening mode restarts Android's recognizer in a loop, so some phones play a short beep each cycle and it uses more battery.
+| Listening loop, wake word, voice lock flow | `JarvisService.kt`, `WakeWord.kt` |
+| Command understanding (pure, unit-tested) | `CommandParser.kt`, `Hindustani.kt`, `Translit.kt` |
+| Carrying out commands, spoken replies | `CommandProcessor.kt`, `Lang.kt` |
+| On-screen control, screenshots | `JarvisAccessibilityService.kt` |
+| Notifications | `JarvisNotificationListener.kt` |
+| Optional AI | `AiBrain.kt` |
+| UI | `MainActivity.kt`, `OrbView.kt`, `SettingsActivity.kt` |
+| Tests | `app/src/test/…/CommandParserTest.kt`, `UrduOfflineTest.kt` |
