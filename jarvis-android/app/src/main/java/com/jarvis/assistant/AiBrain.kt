@@ -7,6 +7,9 @@ import com.anthropic.core.JsonValue
 import com.anthropic.errors.AnthropicServiceException
 import com.anthropic.errors.RateLimitException
 import com.anthropic.errors.UnauthorizedException
+import com.anthropic.models.messages.Base64ImageSource
+import com.anthropic.models.messages.ContentBlockParam
+import com.anthropic.models.messages.ImageBlockParam
 import com.anthropic.models.messages.Message
 import com.anthropic.models.messages.MessageCreateParams
 import com.anthropic.models.messages.OutputConfig
@@ -68,7 +71,7 @@ class AiBrain(context: Context) {
             Examples: "CMD: open YouTube", "CMD: call Ammi", "CMD: send a message to Ali saying I am on my way", "CMD: WhatsApp Sara saying see you at 8", "CMD: set an alarm for 6:30 am", "CMD: set a timer for 10 minutes", "CMD: turn on bluetooth", "CMD: play Atif Aslam songs on YouTube", "CMD: navigate to Lahore airport". Write names of people, apps and places in English letters.
 
             Current date and time on the phone: $now.
-        """.trimIndent()
+        """.trimIndent() + personalContext().let { if (it.isEmpty()) "" else "\n\n$it" }
     }
 
     private fun languageRule(): String = when (Lang.mode(prefs)) {
@@ -77,8 +80,19 @@ class AiBrain(context: Context) {
         else -> "Language: reply in English. But if the user speaks or writes in Hindi or Urdu (in any script, including Roman letters), reply in that language: Hindi in Devanagari script, Urdu in Urdu script${if (Speaker.urduVoice) "" else " (this phone has no Urdu voice, so write Urdu replies in Devanagari script with Urdu vocabulary)"}. Never reply in Roman Hindi or Urdu, because the voice can't read it."
     }
 
-    /** Returns what to speak, or a phone command to run. Never throws. */
-    fun ask(question: String): Reply {
+    private fun personalContext(): String {
+        val lines = ArrayList<String>()
+        if (prefs.city.isNotBlank()) lines.add("The user lives in ${prefs.city}; use it for weather and anything local unless they name another place.")
+        val memories = prefs.memories
+        if (memories.isNotEmpty()) {
+            lines.add("Things the user asked you to remember (use them when relevant):")
+            memories.forEach { lines.add("- $it") }
+        }
+        return lines.joinToString("\n")
+    }
+
+    /** Returns what to speak, or a phone command to run. Never throws. [screenJpeg] is an optional base64 screenshot. */
+    fun ask(question: String, screenJpeg: String? = null): Reply {
         if (!hasKey) return Reply(Lang.get(prefs, Lang.Line.NO_BRAIN))
 
         val builder = MessageCreateParams.builder()
@@ -98,7 +112,19 @@ class AiBrain(context: Context) {
                 builder.addAssistantMessage(a)
             }
         }
-        builder.addUserMessage(question)
+        if (screenJpeg != null) {
+            val image = ImageBlockParam.builder()
+                .source(Base64ImageSource.builder().data(screenJpeg).mediaType(Base64ImageSource.MediaType.IMAGE_JPEG).build())
+                .build()
+            builder.addUserMessageOfBlockParams(
+                listOf(
+                    ContentBlockParam.ofImage(image),
+                    ContentBlockParam.ofText("This is a screenshot of my phone screen right now. $question")
+                )
+            )
+        } else {
+            builder.addUserMessage(question)
+        }
 
         return try {
             var response: Message = client().messages().create(builder.build())
@@ -121,7 +147,7 @@ class AiBrain(context: Context) {
             if (command == null && answer.isBlank()) return Reply("I came up empty on that one, ${prefs.title}.")
 
             synchronized(history) {
-                history.add(question to (if (command != null) "CMD: $command" else answer))
+                history.add((if (screenJpeg != null) "[about my screen] $question" else question) to (if (command != null) "CMD: $command" else answer))
                 while (history.size > 8) history.removeAt(0)
             }
             Reply(answer, command)

@@ -27,6 +27,12 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import com.jarvis.assistant.CommandParser.Action
+import com.jarvis.assistant.CommandParser.Global
+import com.jarvis.assistant.CommandParser.Media
+import com.jarvis.assistant.CommandParser.Ringer
+import com.jarvis.assistant.CommandParser.Switch
+import com.jarvis.assistant.CommandParser.Thing
 
 /** Turns a spoken sentence into an action on the phone and a spoken reply. */
 class CommandProcessor(private val ctx: Context) {
@@ -39,7 +45,9 @@ class CommandProcessor(private val ctx: Context) {
         /** Runs after Jarvis has finished speaking (e.g. lock screen, screenshot). */
         val after: (() -> Unit)? = null,
         /** When set, the service asks the AI brain this question and speaks its answer. */
-        val ask: String? = null
+        val ask: String? = null,
+        /** Send a screenshot of the current screen along with [ask]. */
+        val withScreen: Boolean = false
     )
 
     private val prefs = Prefs(ctx)
@@ -52,23 +60,9 @@ class CommandProcessor(private val ctx: Context) {
         get() = Result("I need phone control for that, $sir. Open my app and enable it under Setup, step two.")
 
     fun handle(input: String): Result {
-        // Hindi / Urdu: map common commands offline; send everything else to the AI brain.
-        val nonEnglishMode = !prefs.language.startsWith("en")
-        val translated = if (nonEnglishMode || Hindustani.isNonLatin(input)) Hindustani.toEnglish(input) else null
-        if (translated == null && Hindustani.isNonLatin(input)) {
-            return if (hasBrain) Result("", ask = input.trim()) else Result(Lang.get(prefs, Lang.Line.NO_BRAIN))
-        }
-        val c = (translated ?: input).lowercase(Locale.US)
-            .replace(Regex("[^a-z0-9:'%+@.\\- ]"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-            .trimEnd('.', ' ')
-            .removeSuffix(" please")
-            .replace(Regex("^(?:(?:please|can you|could you|would you|will you|jarvis) )+"), "")
-        if (c.isEmpty()) return Result("Yes, $sir?")
-
+        val action = CommandParser.parse(input, nonEnglishMode = !prefs.language.startsWith("en"))
         return try {
-            route(c)
+            execute(action)
         } catch (e: SecurityException) {
             Result("I don't have permission for that yet, $sir. Please grant it in Setup.")
         } catch (e: Exception) {
@@ -76,168 +70,144 @@ class CommandProcessor(private val ctx: Context) {
         }
     }
 
-    private fun route(c: String): Result {
-        fun m(pattern: String) = Regex(pattern).matchEntire(c)
-        var r: MatchResult?
-
-        // ----- Jarvis itself -----
-        if (m("(stop listening|go to sleep|sleep|go offline|goodbye|bye|shut ?down|stop|that's all)") != null)
-            return Result("Going offline. Call me when you need me, $sir.", Control.STOP_LISTENING)
-        if (m("(lock|secure) (yourself|jarvis|voice|assistant)|voice lock") != null)
-            return Result("Voice lock engaged, $sir.", Control.RELOCK)
-        if (m("(new conversation|new chat|start over|forget (that|it|everything|our conversation)|clear (the )?(chat|conversation))") != null)
-            return Result("Fresh start, $sir. What's on your mind?", Control.NEW_CHAT)
-        if (m("(hello|hi|hey|good (morning|afternoon|evening)|you there|are you there|wake up)") != null)
-            return Result("${greeting()}, $sir. At your service.")
-        if (m("(who are you|what is your name|what's your name|introduce yourself)") != null)
-            return Result("I am Jarvis. Just A Rather Very Intelligent System. Your personal assistant, $sir.")
-        if (m("(thank you|thanks|thank you jarvis|good job|well done)") != null)
-            return Result("Always a pleasure, $sir.")
-        if (m("(help|what can you do|commands|show commands)") != null)
-            return Result("I can answer any question, open apps, make calls, send texts and WhatsApp messages, control the flashlight, volume and brightness, set alarms and timers, search the web, play YouTube, navigate, take screenshots, lock the phone, and tap, scroll and type on screen. Just ask.")
-
-        // ----- Time, date, battery -----
-        if (m("(what('s| is) the )?time( is it)?( now)?|what time is it|tell me the time|current time") != null)
-            return Result("It's ${SimpleDateFormat("h:mm a", Locale.US).format(Date())}, $sir.")
-        if (m("(what('s| is) )?(the |today's )?(date|day)( today)?|what day is it( today)?|what is today") != null)
-            return Result("Today is ${SimpleDateFormat("EEEE, MMMM d", Locale.US).format(Date())}.")
-        if (m("(what('s| is) (the |my )?)?battery( level| status| percentage)?|how much (battery|charge)( is left| do i have)?") != null)
-            return battery()
-
-        // ----- Screen / navigation (needs Accessibility) -----
-        if (m("(go )?home|(go to |show )?(the )?home ?screen") != null) return global(AccessibilityService.GLOBAL_ACTION_HOME, "Home.")
-        if (m("(go )?back|go back") != null) return global(AccessibilityService.GLOBAL_ACTION_BACK, "Done.")
-        if (m("(show |open )?(the )?(recent apps|recents|recent|app switcher|multitasking)") != null)
-            return global(AccessibilityService.GLOBAL_ACTION_RECENTS, "Recent apps.")
-        if (m("(show |open |pull down )?(the |my )?notifications?( panel)?") != null)
-            return global(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS, "Your notifications, $sir.")
-        if (m("(show |open )?(the )?quick settings") != null)
-            return global(AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS, "Quick settings.")
-        if (m("(show |open )?(the )?power (menu|options|dialog)") != null)
-            return global(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG, "Power menu.")
-        if (m("(take|capture|grab) (a )?screen ?shot|screen ?shot") != null) {
-            val s = a11y ?: return needA11y
-            if (Build.VERSION.SDK_INT < 28) return Result("Screenshots need Android 9 or newer, $sir.")
-            return Result("Screenshot.", after = { main.postDelayed({ s.global(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT) }, 600) })
+    private fun execute(action: Action): Result = when (action) {
+        Action.Empty -> Result(Lang.get(prefs, Lang.Line.YES))
+        Action.StopListening -> Result("Going offline. Call me when you need me, $sir.", Control.STOP_LISTENING)
+        Action.Relock -> Result("Voice lock engaged, $sir.", Control.RELOCK)
+        Action.NewChat -> Result("Fresh start, $sir. What's on your mind?", Control.NEW_CHAT)
+        Action.Greet -> Result("${greeting()}, $sir. At your service.")
+        Action.Briefing -> briefing()
+        Action.WhoAreYou -> Result("I am Jarvis. Just A Rather Very Intelligent System. Your personal assistant, $sir.")
+        Action.Thanks -> Result("Always a pleasure, $sir.")
+        Action.Help -> Result(HELP_SPOKEN)
+        Action.Time -> Result("It's ${SimpleDateFormat("h:mm a", Locale.US).format(Date())}, $sir.")
+        Action.Date -> Result("Today is ${SimpleDateFormat("EEEE, MMMM d", Locale.US).format(Date())}.")
+        Action.Battery -> battery()
+        is Action.GlobalAction -> when (action.kind) {
+            Global.HOME -> global(AccessibilityService.GLOBAL_ACTION_HOME, "Home.")
+            Global.BACK -> global(AccessibilityService.GLOBAL_ACTION_BACK, "Done.")
+            Global.RECENTS -> global(AccessibilityService.GLOBAL_ACTION_RECENTS, "Recent apps.")
+            Global.NOTIFICATIONS -> global(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS, "Your notifications, $sir.")
+            Global.QUICK_SETTINGS -> global(AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS, "Quick settings.")
+            Global.POWER -> global(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG, "Power menu.")
         }
-        if (m("lock (the |my )?(phone|screen|device|mobile)|lock it|turn off (the )?screen|screen off") != null) {
-            val s = a11y ?: return needA11y
-            if (Build.VERSION.SDK_INT < 28) return Result("Locking needs Android 9 or newer, $sir.")
-            return Result("Locking the phone.", after = { s.global(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) })
-        }
-        r = m("scroll (up|down|left|right)|(?:swipe|go) (up|down|left|right)|page (up|down)")
-        if (r != null) {
-            val s = a11y ?: return needA11y
-            val dir = r.groupValues.drop(1).first { it.isNotEmpty() }
-            s.scroll(dir)
-            return Result("")
-        }
-        r = m("(?:click|tap|press|select|hit)(?: on)?(?: the)? (.+?)(?: button)?")
-        if (r != null) {
-            val s = a11y ?: return needA11y
-            val target = r.groupValues[1]
-            return if (s.clickText(target)) Result("") else Result("I can't find $target on the screen, $sir.")
-        }
-        r = m("(?:type|write|enter)(?: in)? (.+)")
-        if (r != null) {
-            val s = a11y ?: return needA11y
-            return if (s.typeText(r.groupValues[1])) Result("Typed.") else Result("I can't find a text box on the screen, $sir.")
-        }
-        if (m("read (the |this |my )?(screen|page)|what('s| is) on (the |my )?screen") != null) {
-            val s = a11y ?: return needA11y
-            val text = s.readScreen()
-            return Result(if (text.isBlank()) "I don't see any text on the screen, $sir." else text)
-        }
-
-        // ----- Flashlight -----
-        r = m("(?:turn |switch )?(on|off) (?:the )?(?:flash ?light|torch|flash)|(?:turn |switch )?(?:the )?(?:flash ?light|torch|flash) (on|off)")
-        if (r != null) {
-            val g = r.groupValues
-            return torch(g[1].ifEmpty { g[2] } == "on")
-        }
-        if (m("(flash ?light|torch|light on)") != null) return torch(true)
-        if (m("(light off)") != null) return torch(false)
-
-        // ----- Volume / media -----
-        if (m("(volume up|increase (the )?volume|turn (it |the volume )?up|turn up (the )?(volume|sound)|louder|raise (the )?volume)") != null) return volumeStep(true)
-        if (m("(volume down|decrease (the )?volume|turn (it |the volume )?down|turn down (the )?(volume|sound)|quieter|lower (the )?volume|reduce (the )?volume)") != null) return volumeStep(false)
-        r = m("(?:set |change )?(?:the )?volume (?:to |at )?(\\d{1,3})(?: ?%| percent)?")
-        if (r != null) return volumeSet(r.groupValues[1].toInt())
-        if (m("(max|maximum|full) volume|volume (max|maximum|full)") != null) return volumeSet(100)
-        if (m("mute|mute (the )?(phone|volume|sound|media)") != null) return mute(true)
-        if (m("unmute|unmute (the )?(phone|volume|sound|media)") != null) return mute(false)
-        if (m("(silent|silence) mode|(put|set) (the |my )?phone (on|to) silent|silence (the |my )?phone") != null) return ringer(AudioManager.RINGER_MODE_SILENT, "Silent mode.")
-        if (m("vibrat(e|ion) mode|(put|set) (the |my )?phone (on|to) vibrat(e|ion)") != null) return ringer(AudioManager.RINGER_MODE_VIBRATE, "Vibrate mode.")
-        if (m("(normal|ring|sound|general) mode|ringer on") != null) return ringer(AudioManager.RINGER_MODE_NORMAL, "Ringer on.")
-        if (m("(pause|stop)( the)?( music| song| video| playback)?") != null) return media(KeyEvent.KEYCODE_MEDIA_PAUSE, "")
-        if (m("(resume|play)( the)? (music|song|playback)|resume|continue( playing)?") != null) return media(KeyEvent.KEYCODE_MEDIA_PLAY, "")
-        if (m("(next|skip)( the)?( song| track| video)?|skip (this )?(song|track)") != null) return media(KeyEvent.KEYCODE_MEDIA_NEXT, "")
-        if (m("(previous|last|go back to the previous)( song| track| video)") != null) return media(KeyEvent.KEYCODE_MEDIA_PREVIOUS, "")
-
-        // ----- Brightness -----
-        r = m("(?:set |change )?(?:the )?brightness (?:to |at )?(\\d{1,3})(?: ?%| percent)?")
-        if (r != null) return brightness(r.groupValues[1].toInt())
-        if (m("(brightness up|increase (the )?brightness|brighter|more brightness|max(imum)? brightness|full brightness)") != null)
-            return brightness(if (c.contains("max") || c.contains("full")) 100 else -1)
-        if (m("(brightness down|decrease (the )?brightness|dimmer|dim (the )?screen|less brightness|lower (the )?brightness|min(imum)? brightness)") != null)
-            return brightness(if (c.contains("min")) 1 else -2)
-
-        // ----- Wi-Fi, Bluetooth, other toggles -----
-        r = m("(?:turn|switch) (on|off) (?:the |my )?(.+)|(?:turn|switch) (?:the |my )?(.+?) (on|off)|(enable|disable|toggle|start|stop) (?:the |my )?(.+)")
-        if (r != null) {
-            val g = r.groupValues
-            val (state, thing) = when {
-                g[1].isNotEmpty() -> g[1] to g[2]
-                g[4].isNotEmpty() -> g[4] to g[3]
-                else -> (if (g[5] == "enable" || g[5] == "start") "on" else if (g[5] == "toggle") "toggle" else "off") to g[6]
+        Action.Screenshot -> {
+            val s = a11y
+            when {
+                s == null -> needA11y
+                Build.VERSION.SDK_INT < 28 -> Result("Screenshots need Android 9 or newer, $sir.")
+                else -> Result("Screenshot.", after = { main.postDelayed({ s.global(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT) }, 600) })
             }
-            toggle(thing, state)?.let { return it }
         }
+        Action.LockScreen -> {
+            val s = a11y
+            when {
+                s == null -> needA11y
+                Build.VERSION.SDK_INT < 28 -> Result("Locking needs Android 9 or newer, $sir.")
+                else -> Result("Locking the phone.", after = { s.global(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) })
+            }
+        }
+        is Action.Scroll -> a11y?.let { if (it.scroll(action.direction)) Result("") else Result("I couldn't scroll here, $sir.") } ?: needA11y
+        is Action.Click -> a11y?.let {
+            if (it.clickText(action.target)) Result("") else Result("I can't find ${action.target} on the screen, $sir.")
+        } ?: needA11y
+        is Action.Type -> a11y?.let {
+            if (it.typeText(action.text)) Result("Typed.") else Result("I can't find a text box on the screen, $sir.")
+        } ?: needA11y
+        Action.ReadScreen -> a11y?.let {
+            val text = it.readScreen()
+            Result(if (text.isBlank()) "I don't see any text on the screen, $sir." else text)
+        } ?: needA11y
+        is Action.DescribeScreen -> when {
+            a11y == null -> needA11y
+            !hasBrain -> a11y?.readScreen().orEmpty().let { Result(if (it.isBlank()) "I don't see any text on the screen, $sir." else it) }
+            else -> Result("", ask = action.question ?: "Look at my screen. Briefly tell me what it shows and anything important I should notice.", withScreen = true)
+        }
+        Action.ReadNotifications -> readNotifications()
+        is Action.Remember -> {
+            prefs.addMemory(action.fact)
+            Result("Got it, $sir. I'll remember that.")
+        }
+        Action.Recall -> {
+            val memories = prefs.memories
+            if (memories.isEmpty()) Result("You haven't asked me to remember anything yet, $sir.")
+            else Result("Here's what I remember. " + memories.joinToString(". ") { it.trimEnd('.') } + ".")
+        }
+        Action.ClearMemory -> {
+            prefs.memories = emptyList()
+            Result("Done. My memory is wiped clean, $sir.")
+        }
+        is Action.Torch -> torch(action.on)
+        is Action.VolumeStep -> volumeStep(action.up)
+        is Action.VolumeSet -> volumeSet(action.percent)
+        is Action.Mute -> mute(action.on)
+        is Action.RingerMode -> when (action.mode) {
+            Ringer.SILENT -> ringer(AudioManager.RINGER_MODE_SILENT, "Silent mode.")
+            Ringer.VIBRATE -> ringer(AudioManager.RINGER_MODE_VIBRATE, "Vibrate mode.")
+            Ringer.NORMAL -> ringer(AudioManager.RINGER_MODE_NORMAL, "Ringer on.")
+        }
+        is Action.MediaKey -> when (action.key) {
+            Media.PLAY -> media(KeyEvent.KEYCODE_MEDIA_PLAY, "")
+            Media.PAUSE -> media(KeyEvent.KEYCODE_MEDIA_PAUSE, "")
+            Media.NEXT -> media(KeyEvent.KEYCODE_MEDIA_NEXT, "")
+            Media.PREVIOUS -> media(KeyEvent.KEYCODE_MEDIA_PREVIOUS, "")
+        }
+        is Action.BrightnessSet -> brightness(action.percent)
+        is Action.BrightnessStep -> brightness(if (action.up) -1 else -2)
+        is Action.Toggle -> toggle(action.thing, action.state)
+        is Action.Alarm -> alarm(action.hour, action.minute, action.label)
+        is Action.Timer -> timer(action.seconds, action.label)
+        is Action.WhatsApp -> whatsapp(action.who, action.body)
+        is Action.Sms -> sms(action.who, action.body)
+        is Action.Call -> call(action.who)
+        is Action.YouTube -> youtube(action.query)
+        is Action.Navigate -> navigate(action.place)
+        is Action.ShowOnMap -> map(action.place)
+        is Action.Camera -> camera(action.selfie)
+        is Action.Search -> search(action.query)
+        is Action.SettingsPage -> settingsPage(action.name)
+        is Action.OpenApp -> openApp(action.name)
+        is Action.Question -> if (hasBrain) Result("", ask = action.text) else search(action.text)
+        is Action.Ask -> if (hasBrain) Result("", ask = action.text) else Result(Lang.get(prefs, Lang.Line.NO_BRAIN))
+        is Action.Unknown -> {
+            val app = findApp(action.text, loose = false)
+            when {
+                app != null -> launchApp(app.first, app.second)
+                hasBrain -> Result("", ask = action.text)
+                else -> Result("Sorry $sir, I don't know how to do that yet. Add a Claude API key in my settings and I can answer anything.")
+            }
+        }
+    }
 
-        // ----- Alarms & timers -----
-        r = m("(?:set (?:an |the |my )?alarm|wake me up|alarm)(?: for| at)? (\\d{1,2})(?::(\\d{2})| (\\d{2}))?(?: ?([ap])\\.? ?m\\.?)?(?: (?:in the )?(morning|evening|night|afternoon|tonight))?.*")
-        if (r != null) return alarm(r)
-        r = m("(?:set (?:a |the )?timer|timer|remind me in|countdown)(?: for)? (\\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty five|sixty) (second|sec|minute|min|hour)s?.*")
-        if (r != null) return timer(r.groupValues[1], r.groupValues[2])
+    private fun briefing(): Result {
+        val now = Date()
+        val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val local = "${greeting()}, $sir. It's ${SimpleDateFormat("h:mm a", Locale.US).format(now)} on " +
+            "${SimpleDateFormat("EEEE, MMMM d", Locale.US).format(now)}. Battery is at $level percent."
+        if (!hasBrain) return Result(local)
+        val where = prefs.city.ifBlank { "my area" }
+        return Result(
+            local,
+            ask = "Give me a quick spoken briefing for $where: today's weather in one sentence, then the two most important news headlines in one sentence each. No greeting, I've already been greeted."
+        )
+    }
 
-        // ----- Calls, SMS, WhatsApp -----
-        r = m("(?:send )?(?:a )?whats ?app(?: message)?(?: to)? (.+?) (?:saying|that says|that|message) (.+)")
-        if (r != null) return whatsapp(r.groupValues[1], r.groupValues[2])
-        r = m("(?:send (?:a |an )?(?:message|text|sms|text message) to|text|message|sms) (.+?) (?:saying|that says|that) (.+)")
-        if (r != null) return sms(r.groupValues[1], r.groupValues[2])
-        r = m("(?:call|dial|phone|ring) (.+?)(?: now)?")
-        if (r != null) return call(r.groupValues[1])
-
-        // ----- Web, YouTube, Maps, camera -----
-        r = m("(?:play|search|watch|find) (.+) on youtube|youtube (?:search )?(?:for )?(.+)|(?:open )?youtube and (?:play|search)(?: for)? (.+)")
-        if (r != null) return youtube(r.groupValues.drop(1).first { it.isNotEmpty() })
-        r = m("play (?:the )?(?:song |video |music )?(.+)")
-        if (r != null) return youtube(r.groupValues[1])
-        r = m("(?:navigate|directions|take me|drive|route|get me|show me the way) (?:to )?(.+)")
-        if (r != null) return navigate(r.groupValues[1])
-        r = m("(?:where is|show me|find) (.+?) on (?:the )?map|(?:show|open) (.+?) (?:on|in) (?:google )?maps")
-        if (r != null) return map(r.groupValues.drop(1).first { it.isNotEmpty() })
-        if (m("(take a |take |click a )?(selfie|front camera)") != null) return camera(true)
-        if (m("(take a |take |click a |capture a )?(photo|picture|pic)|(open |start )?(the )?camera") != null) return camera(false)
-        r = m("(?:search|google|look up|search for|search google for|google search) (?:for )?(.+)")
-        if (r != null) return search(r.groupValues[1])
-        if (m("(?:what|who|whom|whose|when|where|why|which|how|is|are|can|could|should|would|will|do|does|did)(?:'s| ).+|(?:tell me|explain|describe|define|give me|write|translate|calculate|suggest|recommend|summarize|compare|ask (?:claude|ai|the ai)) .+") != null)
-            return if (hasBrain) Result("", ask = c) else search(c)
-
-        // ----- Settings pages -----
-        r = m("open (?:the )?(wi-?fi|wifi|bluetooth|display|sound|battery|location|app|apps|storage|security|accessibility|developer|date|language|notification|data|mobile data|hotspot) settings?")
-        if (r != null) return settingsPage(r.groupValues[1])
-
-        // ----- Open apps -----
-        r = m("(?:open|launch|start|run|go to|show me|show) (?:the |my )?(.+?)(?: app| application)?")
-        if (r != null) return openApp(r.groupValues[1])
-
-        // Maybe the user just said an app name.
-        findApp(c, loose = false)?.let { return launchApp(it.first, it.second) }
-
-        // Anything else goes to the AI brain.
-        if (hasBrain) return Result("", ask = c)
-        return Result("Sorry $sir, I don't know how to do that yet. Add a Claude API key in my settings and I can answer anything.")
+    private fun readNotifications(): Result {
+        val listener = JarvisNotificationListener.instance
+        if (listener == null) {
+            launch(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            return Result("I need notification access to read your messages, $sir. Turn on Jarvis on the page I've opened.")
+        }
+        val items = listener.recent(limit = 6)
+        if (items.isEmpty()) return Result("No new notifications, $sir.")
+        listener.markAllRead()
+        val spoken = items.joinToString(" ") { n ->
+            val body = n.text.take(140)
+            if (n.title.isNotBlank()) "${n.app}, from ${n.title}: $body." else "${n.app}: $body."
+        }
+        val count = items.size
+        return Result("You have $count new notification${if (count == 1) "" else "s"}. $spoken")
     }
 
     // =================================================================
@@ -360,42 +330,30 @@ class CommandProcessor(private val ctx: Context) {
     }
 
     // ----- Toggles -----
-    private fun toggle(thing: String, state: String): Result? {
-        val t = thing.trim()
-        return when {
-            t.matches(Regex("(the )?(flash ?light|torch|flash)")) -> torch(state != "off")
-            t.matches(Regex("wi-?fi|wifi|wi fi|internet")) -> wifi(state)
-            t.contains("bluetooth") -> quickTile(listOf("bluetooth"), "Bluetooth", Settings.ACTION_BLUETOOTH_SETTINGS)
-            t.contains("airplane") || t.contains("aeroplane") || t.contains("flight") ->
-                quickTile(listOf("airplane", "aeroplane", "flight mode"), "Airplane mode", Settings.ACTION_AIRPLANE_MODE_SETTINGS)
-            t.contains("hotspot") || t.contains("tethering") ->
-                quickTile(listOf("hotspot"), "Hotspot", Settings.ACTION_WIRELESS_SETTINGS)
-            t.contains("mobile data") || t == "data" || t.contains("cellular") ->
-                quickTile(listOf("mobile data", "data"), "Mobile data", Settings.ACTION_DATA_ROAMING_SETTINGS)
-            t.contains("location") || t.contains("gps") ->
-                quickTile(listOf("location"), "Location", Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-            t.contains("do not disturb") || t == "dnd" ->
-                quickTile(listOf("do not disturb"), "Do not disturb", Settings.ACTION_SOUND_SETTINGS)
-            t.contains("rotat") -> quickTile(listOf("rotate", "rotation"), "Auto rotate", Settings.ACTION_DISPLAY_SETTINGS)
-            t.contains("battery saver") || t.contains("power sav") ->
-                quickTile(listOf("battery saver", "power saving"), "Battery saver", Settings.ACTION_BATTERY_SAVER_SETTINGS)
-            t.contains("dark mode") || t.contains("dark theme") ->
-                quickTile(listOf("dark"), "Dark mode", Settings.ACTION_DISPLAY_SETTINGS)
-            t == "sound" || t == "volume" -> mute(state == "off")
-            else -> null
-        }
+    private fun toggle(thing: Thing, state: Switch): Result = when (thing) {
+        Thing.WIFI -> wifi(state)
+        Thing.BLUETOOTH -> quickTile(listOf("bluetooth"), "Bluetooth", Settings.ACTION_BLUETOOTH_SETTINGS)
+        Thing.AIRPLANE -> quickTile(listOf("airplane", "aeroplane", "flight mode"), "Airplane mode", Settings.ACTION_AIRPLANE_MODE_SETTINGS)
+        Thing.HOTSPOT -> quickTile(listOf("hotspot"), "Hotspot", Settings.ACTION_WIRELESS_SETTINGS)
+        Thing.MOBILE_DATA -> quickTile(listOf("mobile data", "data"), "Mobile data", Settings.ACTION_DATA_ROAMING_SETTINGS)
+        Thing.LOCATION -> quickTile(listOf("location"), "Location", Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+        Thing.DND -> quickTile(listOf("do not disturb"), "Do not disturb", Settings.ACTION_SOUND_SETTINGS)
+        Thing.ROTATION -> quickTile(listOf("rotate", "rotation"), "Auto rotate", Settings.ACTION_DISPLAY_SETTINGS)
+        Thing.BATTERY_SAVER -> quickTile(listOf("battery saver", "power saving"), "Battery saver", Settings.ACTION_BATTERY_SAVER_SETTINGS)
+        Thing.DARK_MODE -> quickTile(listOf("dark"), "Dark mode", Settings.ACTION_DISPLAY_SETTINGS)
+        Thing.SOUND -> mute(state == Switch.OFF)
     }
 
     @Suppress("DEPRECATION")
-    private fun wifi(state: String): Result {
+    private fun wifi(state: Switch): Result {
         if (Build.VERSION.SDK_INT < 29) {
             val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            wm.isWifiEnabled = state == "on" || (state == "toggle" && !wm.isWifiEnabled)
+            wm.isWifiEnabled = state == Switch.ON || (state == Switch.TOGGLE && !wm.isWifiEnabled)
             return Result("Wi-Fi ${if (wm.isWifiEnabled) "on" else "off"}.")
         }
         val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        if (state == "on" && wm.isWifiEnabled) return Result("Wi-Fi is already on, $sir.")
-        if (state == "off" && !wm.isWifiEnabled) return Result("Wi-Fi is already off, $sir.")
+        if (state == Switch.ON && wm.isWifiEnabled) return Result("Wi-Fi is already on, $sir.")
+        if (state == Switch.OFF && !wm.isWifiEnabled) return Result("Wi-Fi is already off, $sir.")
         launch(Intent(Settings.Panel.ACTION_WIFI))
         return Result("Android only lets you flip Wi-Fi yourself on this version. Here's the switch, $sir.")
     }
@@ -435,52 +393,41 @@ class CommandProcessor(private val ctx: Context) {
         return Result("Opening $name settings.")
     }
 
-    // ----- Alarms & timers -----
-    private fun alarm(r: MatchResult): Result {
-        val g = r.groupValues
-        var hour = g[1].toInt()
-        val minute = (g[2].ifEmpty { g[3] }).ifEmpty { "0" }.toInt().coerceIn(0, 59)
-        val ampm = g[4]
-        val part = g[5]
-        if ((ampm == "p" || part in listOf("evening", "night", "afternoon", "tonight")) && hour < 12) hour += 12
-        if (ampm == "a" && hour == 12) hour = 0
-        hour = hour.coerceIn(0, 23)
+    // ----- Alarms, reminders & timers -----
+    private fun alarm(hour: Int, minute: Int, label: String?): Result {
         val intent = Intent(AlarmClock.ACTION_SET_ALARM)
             .putExtra(AlarmClock.EXTRA_HOUR, hour)
             .putExtra(AlarmClock.EXTRA_MINUTES, minute)
-            .putExtra(AlarmClock.EXTRA_MESSAGE, "Jarvis alarm")
+            .putExtra(AlarmClock.EXTRA_MESSAGE, label?.replaceFirstChar { it.uppercase() } ?: "Jarvis alarm")
             .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
         if (!launch(intent)) return Result("I couldn't find a clock app, $sir.")
         val cal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, hour)
             set(Calendar.MINUTE, minute)
         }
-        return Result("Alarm set for ${SimpleDateFormat("h:mm a", Locale.US).format(cal.time)}, $sir.")
+        val time = SimpleDateFormat("h:mm a", Locale.US).format(cal.time)
+        return Result(if (label != null) "I'll remind you to $label at $time, $sir." else "Alarm set for $time, $sir.")
     }
 
-    private fun timer(amountWord: String, unit: String): Result {
-        val words = mapOf(
-            "a" to 1, "an" to 1, "one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5,
-            "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10, "fifteen" to 15,
-            "twenty" to 20, "thirty" to 30, "forty five" to 45, "sixty" to 60
-        )
-        val amount = amountWord.toIntOrNull() ?: words[amountWord] ?: 1
-        val seconds = when {
-            unit.startsWith("h") -> amount * 3600
-            unit.startsWith("m") -> amount * 60
-            else -> amount
-        }
+    private fun timer(seconds: Int, label: String?): Result {
         val intent = Intent(AlarmClock.ACTION_SET_TIMER)
-            .putExtra(AlarmClock.EXTRA_LENGTH, seconds)
-            .putExtra(AlarmClock.EXTRA_MESSAGE, "Jarvis timer")
+            .putExtra(AlarmClock.EXTRA_LENGTH, seconds.coerceIn(1, 86_399))
+            .putExtra(AlarmClock.EXTRA_MESSAGE, label?.replaceFirstChar { it.uppercase() } ?: "Jarvis timer")
             .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
         if (!launch(intent)) return Result("I couldn't find a clock app, $sir.")
-        val label = when {
-            unit.startsWith("h") -> "hour"
-            unit.startsWith("m") -> "minute"
-            else -> "second"
-        }
-        return Result("Timer set for $amount $label${if (amount == 1) "" else "s"}.")
+        val span = spokenDuration(seconds)
+        return Result(if (label != null) "I'll remind you to $label in $span." else "Timer set for $span.")
+    }
+
+    private fun spokenDuration(seconds: Int): String {
+        val h = seconds / 3600
+        val m = (seconds % 3600) / 60
+        val s = seconds % 60
+        val parts = ArrayList<String>()
+        if (h > 0) parts.add("$h hour${if (h == 1) "" else "s"}")
+        if (m > 0) parts.add("$m minute${if (m == 1) "" else "s"}")
+        if (s > 0 || parts.isEmpty()) parts.add("$s second${if (s == 1) "" else "s"}")
+        return parts.joinToString(" and ")
     }
 
     // ----- Contacts, calls, messages -----
@@ -643,5 +590,12 @@ class CommandProcessor(private val ctx: Context) {
         }
         val app = findApp(name) ?: return Result("I couldn't find an app called $name, $sir.")
         return launchApp(app.first, app.second)
+    }
+
+    companion object {
+        private const val HELP_SPOKEN = "I can answer any question, look at your screen, read your notifications, open apps, " +
+            "make calls, send texts and WhatsApp messages, remember things for you, set reminders, alarms and timers, " +
+            "control the flashlight, volume, brightness and quick settings, play YouTube, navigate, take screenshots, " +
+            "lock the phone, and tap, scroll and type on screen. In English, Hindi or Urdu. Just ask."
     }
 }

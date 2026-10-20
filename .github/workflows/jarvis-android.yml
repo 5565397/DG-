@@ -28,8 +28,11 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Run command tests
+        run: gradle testDebugUnitTest
+
       - name: Build debug APK
-        run: gradle assembleDebug --stacktrace
+        run: gradle assembleDebug
 
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk Jarvis.apk

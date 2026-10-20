@@ -1,366 +1,242 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/jarvis_bg"
-    android:fillViewport="true">
+    android:background="@color/bg"
+    android:orientation="vertical">
 
+    <!-- Top bar -->
     <LinearLayout
         android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="24dp"
+        android:paddingEnd="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.42"
+            android:text="JARVIS"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp" />
+
+        <ImageButton
+            android:id="@+id/btnSettings"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Settings"
+            android:src="@drawable/ic_tune"
+            app:tint="@color/text_secondary" />
+    </LinearLayout>
+
+    <!-- Setup banner (hidden when everything is ready) -->
+    <LinearLayout
+        android:id="@+id/setupBanner"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="20dp">
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:background="@drawable/card"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="@drawable/row_ripple"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="18dp"
+        android:paddingTop="14dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="14dp"
+        android:visibility="gone">
 
-        <TextView
-            android:layout_width="match_parent"
+        <View
+            android:layout_width="6dp"
+            android:layout_height="6dp"
+            android:background="@drawable/dot" />
+
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:gravity="center"
-            android:letterSpacing="0.3"
-            android:text="J.A.R.V.I.S."
-            android:textColor="@color/jarvis_cyan"
-            android:textSize="30sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:text="Just A Rather Very Intelligent System"
-            android:textColor="@color/jarvis_muted"
-            android:textSize="12sp" />
-
-        <FrameLayout
-            android:layout_width="230dp"
-            android:layout_height="230dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="24dp">
-
-            <View
-                android:id="@+id/ring"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="@drawable/ring" />
+            android:layout_marginStart="14dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
             <TextView
-                android:id="@+id/btnMic"
-                android:layout_width="160dp"
-                android:layout_height="160dp"
-                android:layout_gravity="center"
-                android:background="@drawable/core_button"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:letterSpacing="0.15"
-                android:text="TAP\nTO SPEAK"
-                android:textColor="#FFFFFF"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-        </FrameLayout>
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Finish setting up Jarvis"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/setupProgress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_chevron"
+            app:tint="@color/text_tertiary" />
+    </LinearLayout>
+
+    <!-- Orb + conversation -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <com.jarvis.assistant.OrbView
+            android:id="@+id/orb"
+            android:layout_width="280dp"
+            android:layout_height="280dp"
+            android:clickable="true"
+            android:contentDescription="Tap to speak to Jarvis"
+            android:focusable="true" />
 
         <TextView
             android:id="@+id/txtStatus"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:gravity="center"
-            android:text="Offline"
-            android:textColor="@color/jarvis_cyan"
-            android:textSize="16sp" />
+            android:layout_marginTop="4dp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.12"
+            android:textAllCaps="true"
+            android:textColor="@color/text_tertiary"
+            android:textSize="11sp" />
 
         <TextView
             android:id="@+id/txtHeard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginStart="36dp"
+            android:layout_marginTop="28dp"
+            android:layout_marginEnd="36dp"
+            android:ellipsize="end"
             android:gravity="center"
-            android:textColor="@color/jarvis_text"
-            android:textSize="15sp"
-            android:textStyle="italic" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/inputCommand"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="Or type a command..."
-                android:imeOptions="actionGo"
-                android:inputType="text"
-                android:textColor="@color/jarvis_text"
-                android:textColorHint="@color/jarvis_muted" />
-
-            <Button
-                android:id="@+id/btnRun"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Run" />
-        </LinearLayout>
-
-        <!-- Always listening -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:background="@drawable/panel"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="WAKE WORD"
-                android:textColor="@color/jarvis_cyan"
-                android:textStyle="bold" />
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/switchWake"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Always listen for &quot;Jarvis&quot;"
-                android:textColor="@color/jarvis_text" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Say &quot;Jarvis, open YouTube&quot; any time, even with the app closed. Uses more battery."
-                android:textColor="@color/jarvis_muted"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <!-- Voice lock -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:background="@drawable/panel"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="VOICE LOCK"
-                android:textColor="@color/jarvis_cyan"
-                android:textStyle="bold" />
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/switchLock"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Only obey my voice"
-                android:textColor="@color/jarvis_text" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/btnEnroll"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="6dp"
-                    android:layout_weight="1"
-                    android:text="Record my voice" />
-
-                <Button
-                    android:id="@+id/btnTest"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="6dp"
-                    android:layout_weight="1"
-                    android:text="Test a voice" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/txtVoiceInfo"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:textColor="@color/jarvis_text"
-                android:textSize="13sp" />
-
-            <TextView
-                android:id="@+id/txtThreshold"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:textColor="@color/jarvis_text"
-                android:textSize="13sp" />
-
-            <SeekBar
-                android:id="@+id/seekThreshold"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:max="48" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Tip: test your own voice, then ask a friend to test theirs. Set the strictness between the two scores."
-                android:textColor="@color/jarvis_muted"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <!-- Setup -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:background="@drawable/panel"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="SETUP (do all 5 once)"
-                android:textColor="@color/jarvis_cyan"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/btnPerms"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp" />
-
-            <Button
-                android:id="@+id/btnAccess"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
-            <Button
-                android:id="@+id/btnOverlay"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
-            <Button
-                android:id="@+id/btnWriteSettings"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
-            <Button
-                android:id="@+id/btnBattery"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-        </LinearLayout>
-
-        <!-- Preferences -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:background="@drawable/panel"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="PREFERENCES"
-                android:textColor="@color/jarvis_cyan"
-                android:textStyle="bold" />
-
-            <EditText
-                android:id="@+id/inputApiKey"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Claude API key for the AI brain (sk-ant-...)"
-                android:inputType="textPassword"
-                android:textColor="@color/jarvis_text"
-                android:textColorHint="@color/jarvis_muted" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Get a key at console.anthropic.com → API Keys. Usage is billed to your Anthropic account."
-                android:textColor="@color/jarvis_muted"
-                android:textSize="12sp" />
-
-            <EditText
-                android:id="@+id/inputTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="What should Jarvis call you? (sir)"
-                android:inputType="text"
-                android:textColor="@color/jarvis_text"
-                android:textColorHint="@color/jarvis_muted" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="Language Jarvis listens and talks in"
-                android:textColor="@color/jarvis_text"
-                android:textSize="13sp" />
-
-            <Spinner
-                android:id="@+id/spinnerLanguage"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="48dp" />
-
-            <TextView
-                android:id="@+id/txtVoiceStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="@color/jarvis_muted"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/btnTtsVoices"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Install Hindi / Urdu voice" />
-
-            <EditText
-                android:id="@+id/inputCountry"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Country code for WhatsApp (e.g. 92, 91, 1)"
-                android:inputType="number"
-                android:textColor="@color/jarvis_text"
-                android:textColorHint="@color/jarvis_muted" />
-
-            <EditText
-                android:id="@+id/inputUnlock"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Stay unlocked for N minutes (5)"
-                android:inputType="number"
-                android:textColor="@color/jarvis_text"
-                android:textColorHint="@color/jarvis_muted" />
-
-            <Button
-                android:id="@+id/btnSave"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Save" />
-        </LinearLayout>
+            android:maxLines="2"
+            android:textColor="@color/text_secondary"
+            android:textSize="15sp" />
 
         <TextView
-            android:id="@+id/txtHelp"
+            android:id="@+id/txtReply"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:background="@drawable/panel"
-            android:lineSpacingExtra="3dp"
-            android:padding="16dp"
-            android:textColor="@color/jarvis_text"
-            android:textSize="13sp" />
+            android:layout_marginStart="32dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="32dp"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-light"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:maxLines="6"
+            android:textColor="@color/text_primary"
+            android:textIsSelectable="true"
+            android:textSize="21sp" />
     </LinearLayout>
-</ScrollView>
+
+    <!-- Typed command -->
+    <LinearLayout
+        android:id="@+id/inputRow"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/pill"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="6dp"
+        android:visibility="gone">
+
+        <EditText
+            android:id="@+id/inputCommand"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@null"
+            android:hint="Type to Jarvis"
+            android:imeOptions="actionSend"
+            android:inputType="textCapSentences"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp" />
+
+        <ImageButton
+            android:id="@+id/btnSend"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Send"
+            android:src="@drawable/ic_send"
+            app:tint="@color/accent" />
+    </LinearLayout>
+
+    <!-- Bottom bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="22dp">
+
+        <LinearLayout
+            android:id="@+id/chipWake"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="@drawable/pill"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="@drawable/row_ripple"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="18dp">
+
+            <View
+                android:id="@+id/wakeDot"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
+                android:background="@drawable/dot" />
+
+            <TextView
+                android:id="@+id/txtWake"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="Hey Jarvis · Off"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <ImageButton
+            android:id="@+id/btnKeyboard"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/pill"
+            android:contentDescription="Type a command"
+            android:foreground="@drawable/row_ripple"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_keyboard"
+            app:tint="@color/text_secondary" />
+    </LinearLayout>
+</LinearLayout>

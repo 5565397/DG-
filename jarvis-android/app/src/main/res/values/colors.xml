@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="jarvis_bg">#05080F</color>
-    <color name="jarvis_panel">#0D1626</color>
-    <color name="jarvis_cyan">#29D3FF</color>
-    <color name="jarvis_cyan_dim">#1A6E8C</color>
-    <color name="jarvis_text">#DDEBFF</color>
-    <color name="jarvis_muted">#7D93B2</color>
+    <color name="bg">#0A0B0E</color>
+    <color name="surface">#121419</color>
+    <color name="surface_raised">#1A1D24</color>
+    <color name="hairline">#252932</color>
+    <color name="text_primary">#F3F5F8</color>
+    <color name="text_secondary">#9AA3B2</color>
+    <color name="text_tertiary">#5E6674</color>
+    <color name="accent">#6FD3FF</color>
+    <color name="accent_deep">#2B6BFF</color>
+    <color name="success">#5BE3A1</color>
+    <color name="danger">#FF6B6B</color>
+    <color name="ripple">#1FFFFFFF</color>
 </resources>

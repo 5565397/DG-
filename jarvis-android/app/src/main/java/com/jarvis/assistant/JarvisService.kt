@@ -114,7 +114,7 @@ class JarvisService : Service(), RecognitionListener {
         }
         recognizer = null
         speaker.shutdown()
-        JarvisBus.status("Offline")
+        JarvisBus.state(JarvisBus.State.OFFLINE)
         super.onDestroy()
     }
 
@@ -146,7 +146,7 @@ class JarvisService : Service(), RecognitionListener {
             ServiceCompat.startForeground(this, NOTIF_ID, notification, type)
             true
         } catch (e: Exception) {
-            JarvisBus.status("Couldn't start in the background. Open the app and try again.")
+            JarvisBus.state(JarvisBus.State.OFFLINE, "Couldn't start in the background. Open the app and try again.")
             false
         }
     }
@@ -161,7 +161,7 @@ class JarvisService : Service(), RecognitionListener {
     private fun startListening() {
         if (listening || busy) return
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            JarvisBus.status("Speech recognition isn't available. Install or update the Google app.")
+            JarvisBus.state(JarvisBus.State.IDLE, "Speech recognition isn't available. Install or update the Google app.")
             return
         }
         val rec = recognizer ?: SpeechRecognizer.createSpeechRecognizer(this).also {
@@ -177,7 +177,7 @@ class JarvisService : Service(), RecognitionListener {
         listening = true
         try {
             rec.startListening(intent)
-            JarvisBus.status(if (awaitingCommand) "Listening..." else "Waiting for \"Jarvis\"...", true)
+            JarvisBus.state(JarvisBus.State.LISTENING, if (awaitingCommand) "Listening" else "Say \"Jarvis\"")
         } catch (e: Exception) {
             listening = false
             resetRecognizer()
@@ -206,7 +206,7 @@ class JarvisService : Service(), RecognitionListener {
         if (awaitingCommand || wakeMode) {
             startListening()
         } else {
-            JarvisBus.status("Ready")
+            JarvisBus.state(JarvisBus.State.IDLE)
             stopSelf()
         }
     }
@@ -246,7 +246,7 @@ class JarvisService : Service(), RecognitionListener {
         if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
             wakeMode = false
             awaitingCommand = false
-            JarvisBus.status("Microphone permission is missing.")
+            JarvisBus.state(JarvisBus.State.OFFLINE, "Microphone permission is missing")
             stopSelf()
             return
         }
@@ -270,13 +270,13 @@ class JarvisService : Service(), RecognitionListener {
             if (hardError) resetRecognizer()
             main.postDelayed({ startListening() }, if (hardError) 1200L else 200L)
         } else {
-            JarvisBus.status("Ready")
+            JarvisBus.state(JarvisBus.State.IDLE)
         }
     }
 
     override fun onReadyForSpeech(params: Bundle?) {}
     override fun onBeginningOfSpeech() {}
-    override fun onRmsChanged(rmsdB: Float) {}
+    override fun onRmsChanged(rmsdB: Float) = JarvisBus.level(rmsdB)
     override fun onBufferReceived(buffer: ByteArray?) {}
     override fun onEndOfSpeech() {}
     override fun onPartialResults(partialResults: Bundle?) {}
@@ -295,7 +295,8 @@ class JarvisService : Service(), RecognitionListener {
             }, 400)
             return
         }
-        JarvisBus.status("Jarvis: $text")
+        JarvisBus.state(JarvisBus.State.SPEAKING)
+        JarvisBus.reply(text)
         speaker.speak(text) {
             busy = false
             after?.invoke()
@@ -314,7 +315,7 @@ class JarvisService : Service(), RecognitionListener {
             pendingCommand = command
             busy = true
             stopListening()
-            JarvisBus.status("Voice check: say anything after the beep")
+            JarvisBus.state(JarvisBus.State.SPEAKING, "Voice check")
             speaker.speak(Lang.get(prefs, Lang.Line.VOICE_CHECK)) { verifyThenRun() }
             return
         }
@@ -322,7 +323,7 @@ class JarvisService : Service(), RecognitionListener {
     }
 
     private fun verifyThenRun() {
-        JarvisBus.status("Verifying voice...", true)
+        JarvisBus.state(JarvisBus.State.LISTENING, "Verifying your voice")
         Thread {
             val score = try {
                 VoicePrint.verify(prefs)
@@ -337,7 +338,7 @@ class JarvisService : Service(), RecognitionListener {
                     score < 0f -> say(Lang.get(prefs, Lang.Line.MIC_FAIL))
                     score >= prefs.threshold && command != null -> {
                         unlockedUntil = System.currentTimeMillis() + prefs.unlockMinutes * 60_000L
-                        JarvisBus.status("Voice match (${"%.2f".format(score)}). Unlocked.")
+                        JarvisBus.status("Voice verified")
                         execute(command)
                     }
                     else -> say(Lang.get(prefs, Lang.Line.VOICE_DENIED))
@@ -347,15 +348,16 @@ class JarvisService : Service(), RecognitionListener {
     }
 
     private fun execute(command: String) {
-        JarvisBus.status("Command: $command")
+        JarvisBus.status(command)
         val result = processor.handle(command)
         applyControl(result)
         val question = result.ask
-        if (question != null) {
-            think(question)
-            return
+        when {
+            question == null -> say(result.reply, result.after)
+            // e.g. the briefing: speak the local part, then fetch the rest.
+            result.reply.isNotBlank() -> say(result.reply) { think(question, result.withScreen) }
+            else -> think(question, result.withScreen)
         }
-        say(result.reply, result.after)
     }
 
     private fun applyControl(result: CommandProcessor.Result) {
@@ -372,7 +374,7 @@ class JarvisService : Service(), RecognitionListener {
 
     /** Runs a phone command that the AI translated (e.g. from Hindi or Urdu). */
     private fun runAiCommand(command: String) {
-        JarvisBus.status("Command: $command")
+        JarvisBus.status(command)
         val result = processor.handle(command)
         applyControl(result)
         // Never bounce back to the AI a second time.
@@ -383,12 +385,29 @@ class JarvisService : Service(), RecognitionListener {
         say(result.reply, result.after)
     }
 
-    private fun think(question: String) {
+    private fun think(question: String, withScreen: Boolean = false) {
         busy = true
         stopListening()
-        JarvisBus.status(Lang.get(prefs, Lang.Line.THINKING), true)
+        JarvisBus.state(JarvisBus.State.THINKING, Lang.get(prefs, Lang.Line.THINKING))
+        val a11y = JarvisAccessibilityService.instance
+        if (withScreen && a11y != null) {
+            a11y.captureScreen { jpeg ->
+                if (jpeg != null) {
+                    askBrain(question, jpeg)
+                } else {
+                    // Older Android or capture failed: describe the screen from its text instead.
+                    val text = a11y.readScreen(maxChars = 2500)
+                    askBrain("$question\n\nVisible text on my screen:\n$text", null)
+                }
+            }
+        } else {
+            askBrain(question, null)
+        }
+    }
+
+    private fun askBrain(question: String, screenJpeg: String?) {
         Thread {
-            val reply = brain.ask(question)
+            val reply = brain.ask(question, screenJpeg)
             main.post {
                 busy = false
                 val command = reply.command

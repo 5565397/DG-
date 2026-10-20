@@ -2,6 +2,11 @@ package com.jarvis.assistant
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.graphics.Bitmap
+import android.util.Base64
+import android.view.Display
+import androidx.annotation.RequiresApi
+import java.io.ByteArrayOutputStream
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Build
@@ -215,6 +220,58 @@ class JarvisAccessibilityService : AccessibilityService() {
             }
         }
         main.postDelayed(task, 1500)
+    }
+
+    /** Takes a screenshot and returns it as base64 JPEG (null if unavailable). Android 11+. */
+    fun captureScreen(onResult: (String?) -> Unit) {
+        if (Build.VERSION.SDK_INT < 30) {
+            onResult(null)
+            return
+        }
+        captureScreen30(onResult)
+    }
+
+    @RequiresApi(30)
+    private fun captureScreen30(onResult: (String?) -> Unit) {
+        try {
+            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                override fun onSuccess(result: ScreenshotResult) {
+                    Thread {
+                        val encoded = try {
+                            val hardware = Bitmap.wrapHardwareBuffer(result.hardwareBuffer, result.colorSpace)
+                            val bitmap = hardware?.copy(Bitmap.Config.ARGB_8888, false)
+                            hardware?.recycle()
+                            result.hardwareBuffer.close()
+                            bitmap?.let { toJpegBase64(it) }
+                        } catch (e: Exception) {
+                            null
+                        }
+                        main.post { onResult(encoded) }
+                    }.start()
+                }
+
+                override fun onFailure(errorCode: Int) {
+                    onResult(null)
+                }
+            })
+        } catch (e: Exception) {
+            onResult(null)
+        }
+    }
+
+    private fun toJpegBase64(source: Bitmap): String {
+        val maxSide = 1280f
+        val scale = minOf(1f, maxSide / maxOf(source.width, source.height))
+        val bitmap = if (scale < 1f) {
+            Bitmap.createScaledBitmap(source, (source.width * scale).toInt(), (source.height * scale).toInt(), true)
+        } else {
+            source
+        }
+        val out = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+        if (bitmap !== source) bitmap.recycle()
+        source.recycle()
+        return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
     }
 
     /** Opens Quick Settings and taps the tile whose label matches one of [labels]. */

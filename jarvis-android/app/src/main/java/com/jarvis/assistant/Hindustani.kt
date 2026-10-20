@@ -1,5 +1,6 @@
 package com.jarvis.assistant
 
+import java.text.Normalizer
 import java.util.Locale
 
 /**
@@ -30,7 +31,7 @@ object Hindustani {
     private val down = listOf("कम", "धीमी", "धीमा", "नीचे", "کم", "دھیمی", "آہستہ", "نیچے", "kam", "dheemi", "dheema", "neeche", "aahista")
     private val mute = listOf("म्यूट", "चुप", "میوٹ", "mute")
     private val time = listOf("टाइम", "समय", "वक़्त", "वक्त", "ٹائم", "وقت", "time", "waqt", "samay")
-    private val what = listOf("क्या", "कितने", "कितना", "बताओ", "کیا", "کتنے", "کتنا", "بتاؤ", "kya", "kitne", "kitna", "batao")
+    private val what = listOf("क्या", "कितने", "कितना", "कितनी", "बताओ", "کیا", "کتنے", "کتنا", "کتنی", "بتاؤ", "kya", "kitne", "kitna", "batao")
     private val date = listOf("तारीख", "तारीख़", "दिनांक", "تاریخ", "tareekh", "tarikh")
     private val battery = listOf("बैटरी", "चार्ज", "بیٹری", "چارج", "battery", "charge")
     private val screenshot = listOf("स्क्रीनशॉट", "स्क्रीन शॉट", "اسکرین شاٹ", "سکرین شاٹ", "screenshot", "screen shot")
@@ -44,6 +45,9 @@ object Hindustani {
     private val hello = listOf("नमस्ते", "नमस्कार", "हेलो", "सलाम", "अस्सलाम", "السلام", "سلام", "ہیلو", "namaste", "salam", "assalam", "hello")
     private val newChat = listOf("नई बात", "नयी बात", "सब भूल जाओ", "نئی بات", "سب بھول جاؤ", "nayi baat", "nai baat", "sab bhool jao")
     private val notifications = listOf("नोटिफिकेशन", "نوٹیفکیشن", "notification")
+    private val messages = listOf("मैसेज", "मेसेज", "संदेश", "میسج", "میسیج", "پیغام", "message", "messages", "msg")
+    private val readVerbs = listOf("पढ़ो", "पढ़कर", "सुनाओ", "बताओ", "پڑھو", "پڑھ کر", "سناؤ", "بتاؤ", "padho", "parho", "sunao", "batao")
+    private val screenWords = listOf("स्क्रीन", "اسکرین", "سکرین", "screen")
     private val camera = listOf("कैमरा", "फोटो", "تصویر", "کیمرا", "camera", "photo", "tasveer")
     private val selfie = listOf("सेल्फी", "سیلفی", "selfie")
 
@@ -66,6 +70,8 @@ object Hindustani {
         fun m(p: String) = Regex(p).matchEntire(t)
 
         // Phrases with a free-text part go first (they work with any script).
+        m("(?:याद रखो|याद रखना|یاد رکھو|یاد رکھنا|yaad rakho|yaad rakhna)(?: कि| که| کہ| ki| ke)? (.+)")?.let { return "remember ${it.groupValues[1]}" }
+        m("(.+?) (?:याद रखो|याद रखना|یاد رکھو|یاد رکھنا|yaad rakho|yaad rakhna)")?.let { return "remember ${it.groupValues[1]}" }
         m("(.+?) (?:$youtube) (?:$onWord) (?:$playVerbs)")?.let { return "play ${it.groupValues[1]} on youtube" }
         m("(?:$youtube) (?:$onWord) (.+?) (?:$playVerbs|$searchVerbs)")?.let { return "play ${it.groupValues[1]} on youtube" }
         m("(.+?) (?:$searchVerbs)")?.let { return "search for ${it.groupValues[1]}" }
@@ -84,7 +90,9 @@ object Hindustani {
         if (has(scroll)) return if (has(listOf("ऊपर", "اوپر", "upar"))) "scroll up" else "scroll down"
         if (has(home) && (has(go) || t.split(' ').size <= 2)) return "go home"
         if (has(back) && has(go)) return "go back"
+        if ((has(notifications) || has(messages)) && has(readVerbs)) return "read my notifications"
         if (has(notifications)) return "notifications"
+        if (has(screenWords) && has(what)) return "what's on my screen"
         if (has(selfie)) return "take a selfie"
         if (has(camera) && has(listOf("खोलो", "खींचो", "लो", "کھولو", "کھینچو", "لو", "kholo", "khencho", "lo"))) return "take a photo"
         if (has(time) && has(what)) return "what time is it"
@@ -101,7 +109,10 @@ object Hindustani {
     }
 
     /** Whole-word match that also works for Devanagari / Urdu (Java's \b is ASCII-only). */
-    private fun containsWord(text: String, word: String): Boolean {
+    private fun containsWord(rawText: String, rawWord: String): Boolean {
+        // Same letter can arrive precomposed (ज़) or as letter + nukta (ज़); compare one form.
+        val text = Normalizer.normalize(rawText, Normalizer.Form.NFC)
+        val word = Normalizer.normalize(rawWord, Normalizer.Form.NFC)
         var from = 0
         while (true) {
             val i = text.indexOf(word, from)

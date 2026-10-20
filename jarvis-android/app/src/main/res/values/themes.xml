@@ -1,11 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Jarvis" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">@color/jarvis_cyan</item>
-        <item name="colorOnPrimary">#00131C</item>
-        <item name="colorSecondary">@color/jarvis_cyan</item>
-        <item name="android:windowBackground">@color/jarvis_bg</item>
-        <item name="android:statusBarColor">@color/jarvis_bg</item>
-        <item name="android:navigationBarColor">@color/jarvis_bg</item>
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorOnPrimary">#04121C</item>
+        <item name="colorPrimaryContainer">@color/surface_raised</item>
+        <item name="colorOnPrimaryContainer">@color/text_primary</item>
+        <item name="colorSecondary">@color/accent</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_raised</item>
+        <item name="colorOutline">@color/hairline</item>
+        <item name="android:colorBackground">@color/bg</item>
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorHint">@color/text_tertiary</item>
+    </style>
+
+    <style name="Jarvis.SectionTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">28dp</item>
+        <item name="android:layout_marginBottom">10dp</item>
+        <item name="android:paddingStart">4dp</item>
+        <item name="android:textColor">@color/text_tertiary</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:letterSpacing">0.18</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 </resources>

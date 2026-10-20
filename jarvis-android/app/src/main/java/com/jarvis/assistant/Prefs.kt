@@ -36,6 +36,26 @@ class Prefs(context: Context) {
         get() = sp.getString("api_key", "") ?: ""
         set(v) = sp.edit().putString("api_key", v).apply()
 
+    /** Optional home city, for weather and local answers. */
+    var city: String
+        get() = sp.getString("city", "") ?: ""
+        set(v) = sp.edit().putString("city", v).apply()
+
+    /** Speak incoming chat messages out loud. */
+    var announceMessages: Boolean
+        get() = sp.getBoolean("announce_messages", false)
+        set(v) = sp.edit().putBoolean("announce_messages", v).apply()
+
+    /** Things the user asked Jarvis to remember. */
+    var memories: List<String>
+        get() = (sp.getString("memories", "") ?: "").split(SEP).filter { it.isNotBlank() }
+        set(v) = sp.edit().putString("memories", v.joinToString(SEP)).apply()
+
+    fun addMemory(fact: String) {
+        val clean = fact.trim().replaceFirstChar { it.uppercase() }
+        if (clean.isNotEmpty()) memories = (memories + clean).takeLast(50)
+    }
+
     /** Enrolled voice samples, stored as "a,b,c;d,e,f". */
     var voiceprints: List<FloatArray>
         get() {
@@ -49,4 +69,8 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putString("voiceprints", v.joinToString(";") { it.joinToString(",") }).apply()
 
     fun hasVoiceprint() = voiceprints.isNotEmpty()
+
+    private companion object {
+        const val SEP = "\u001F"
+    }
 }
