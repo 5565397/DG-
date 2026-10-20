@@ -25,6 +25,9 @@ import java.util.Locale
  */
 class AiBrain(context: Context) {
 
+    /** What Claude said: either something to speak, or a phone command to run. */
+    data class Reply(val speech: String, val command: String? = null)
+
     private val prefs = Prefs(context)
     private var client: AnthropicClient? = null
     private var clientKey: String? = null
@@ -52,19 +55,31 @@ class AiBrain(context: Context) {
             You are Jarvis, a personal voice assistant on the user's Android phone, in the style of Tony Stark's J.A.R.V.I.S.: calm, warm, quick-witted, a little dry British humor, always respectful. Address the user as "${prefs.title}" occasionally, not in every sentence.
 
             Your reply is read aloud by text-to-speech, so:
-            - Answer in plain spoken English. No markdown, bullet points, headings, emojis, URLs, or citation marks.
+            - Answer in plain spoken language. No markdown, bullet points, headings, emojis, URLs, or citation marks.
             - Keep it short: usually one to three sentences. Go longer only if the user asks for detail, a story, or step-by-step help, and even then stay under about 150 words.
             - Lead with the answer. Write numbers and units the way a person would say them.
             - Use web search for anything current or time-sensitive (news, sports scores, weather, prices, recent events), then give the answer in a sentence or two.
             - If you're not sure, say so briefly instead of guessing.
 
+            ${languageRule()}
+
+            Phone actions: if the user is asking you to operate the phone (open an app, call or message someone, play something, set an alarm or timer, toggle a setting, navigate somewhere, take a photo or screenshot, scroll, go back, and so on), don't answer conversationally. Reply with exactly one line and nothing else:
+            CMD: <the request as a short English command>
+            Examples: "CMD: open YouTube", "CMD: call Ammi", "CMD: send a message to Ali saying I am on my way", "CMD: WhatsApp Sara saying see you at 8", "CMD: set an alarm for 6:30 am", "CMD: set a timer for 10 minutes", "CMD: turn on bluetooth", "CMD: play Atif Aslam songs on YouTube", "CMD: navigate to Lahore airport". Write names of people, apps and places in English letters.
+
             Current date and time on the phone: $now.
         """.trimIndent()
     }
 
-    /** Returns the spoken answer, or a short spoken error. */
-    fun ask(question: String): String {
-        if (!hasKey) return "My AI brain isn't connected yet, ${prefs.title}. Add your Claude API key in my settings."
+    private fun languageRule(): String = when (Lang.mode(prefs)) {
+        "hi" -> "Language: the user has chosen Hindi. Always reply in natural, conversational spoken Hindi (Hindustani) written in Devanagari script, whatever language the question is in. Common English words like phone, app or internet are fine, written in Devanagari. Call the user \"सर\" if their title is sir."
+        "ur" -> "Language: the user has chosen Urdu. Always reply in natural, conversational spoken Urdu written in Urdu (Nastaliq) script, whatever language the question is in. Common English words like phone, app or internet are fine, written in Urdu script. Call the user \"سر\" if their title is sir."
+        else -> "Language: reply in English. But if the user speaks or writes in Hindi or Urdu (in any script, including Roman letters), reply in that language: Hindi in Devanagari script, Urdu in Urdu script${if (Speaker.urduVoice) "" else " (this phone has no Urdu voice, so write Urdu replies in Devanagari script with Urdu vocabulary)"}. Never reply in Roman Hindi or Urdu, because the voice can't read it."
+    }
+
+    /** Returns what to speak, or a phone command to run. Never throws. */
+    fun ask(question: String): Reply {
+        if (!hasKey) return Reply(Lang.get(prefs, Lang.Line.NO_BRAIN))
 
         val builder = MessageCreateParams.builder()
             .model("claude-opus-5-5")
@@ -98,24 +113,26 @@ class AiBrain(context: Context) {
             }
 
             if (response.stopReason().orElse(null) == StopReason.REFUSAL) {
-                return "I'm afraid I can't help with that one, ${prefs.title}."
+                return Reply("I'm afraid I can't help with that one, ${prefs.title}.")
             }
-            val answer = cleanForSpeech(parts.toString())
-            if (answer.isBlank()) return "I came up empty on that one, ${prefs.title}."
+            val raw = parts.toString().trim()
+            val command = Regex("(?m)^\\s*CMD:\\s*(.+)$").find(raw)?.groupValues?.get(1)?.trim()
+            val answer = if (command != null) "" else cleanForSpeech(raw)
+            if (command == null && answer.isBlank()) return Reply("I came up empty on that one, ${prefs.title}.")
 
             synchronized(history) {
-                history.add(question to answer)
+                history.add(question to (if (command != null) "CMD: $command" else answer))
                 while (history.size > 8) history.removeAt(0)
             }
-            answer
+            Reply(answer, command)
         } catch (e: UnauthorizedException) {
-            "My API key was rejected, ${prefs.title}. Please check it in my settings."
+            Reply("My API key was rejected, ${prefs.title}. Please check it in my settings.")
         } catch (e: RateLimitException) {
-            "I'm being rate limited right now. Give me a moment and ask again."
+            Reply("I'm being rate limited right now. Give me a moment and ask again.")
         } catch (e: AnthropicServiceException) {
-            "My AI service had a problem. Error ${e.statusCode()}."
+            Reply("My AI service had a problem. Error ${e.statusCode()}.")
         } catch (e: Exception) {
-            "I couldn't reach my AI brain. Check the internet connection, ${prefs.title}."
+            Reply("I couldn't reach my AI brain. Check the internet connection, ${prefs.title}.")
         }
     }
 

@@ -9,6 +9,20 @@ import java.util.Locale
 
 /** Jarvis's voice. Every speak() call reports back when it has finished talking. */
 class Speaker(context: Context) : TextToSpeech.OnInitListener {
+
+    companion object {
+        private val ENGLISH = Locale.UK
+        private val HINDI = Locale("hi", "IN")
+        private val URDU = Locale("ur", "PK")
+
+        /** Whether this phone has a Hindi / Urdu text-to-speech voice installed. */
+        @Volatile var hindiVoice = false
+            private set
+        @Volatile var urduVoice = false
+            private set
+    }
+
+    private var currentLocale: Locale? = null
     private val main = Handler(Looper.getMainLooper())
     private val tts = TextToSpeech(context.applicationContext, this)
     private val callbacks = HashMap<String, () -> Unit>()
@@ -24,10 +38,9 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             queued.clear()
             return
         }
-        val result = tts.setLanguage(Locale.UK)
-        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            tts.setLanguage(Locale.US)
-        }
+        hindiVoice = tts.isLanguageAvailable(HINDI) >= TextToSpeech.LANG_AVAILABLE
+        urduVoice = tts.isLanguageAvailable(URDU) >= TextToSpeech.LANG_AVAILABLE
+        useLocale(ENGLISH)
         tts.setSpeechRate(1.0f)
         tts.setPitch(0.92f)
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -53,11 +66,29 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             queued.add(text to onDone)
             return
         }
+        useLocale(localeFor(text))
         val id = "jarvis_${counter++}"
         if (onDone != null) synchronized(callbacks) { callbacks[id] = onDone }
         // Safety net in case the TTS engine never reports back.
         main.postDelayed({ finish(id) }, 4000L + text.length * 110L)
         if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) finish(id)
+    }
+
+    /** Picks the voice from the script the text is written in. */
+    private fun localeFor(text: String): Locale = when {
+        Hindustani.isUrduScript(text) && urduVoice -> URDU
+        Hindustani.isDevanagari(text) && hindiVoice -> HINDI
+        Hindustani.isUrduScript(text) && hindiVoice -> HINDI
+        else -> ENGLISH
+    }
+
+    private fun useLocale(locale: Locale) {
+        if (locale == currentLocale) return
+        val result = tts.setLanguage(locale)
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            tts.setLanguage(Locale.US)
+        }
+        currentLocale = locale
     }
 
     private fun finish(id: String?) {

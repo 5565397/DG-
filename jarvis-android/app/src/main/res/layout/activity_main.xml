@@ -299,14 +299,33 @@
                 android:textColor="@color/jarvis_text"
                 android:textColorHint="@color/jarvis_muted" />
 
-            <EditText
-                android:id="@+id/inputLanguage"
+            <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="Speech language (en-US, en-IN, en-GB)"
-                android:inputType="text"
+                android:layout_marginTop="10dp"
+                android:text="Language Jarvis listens and talks in"
                 android:textColor="@color/jarvis_text"
-                android:textColorHint="@color/jarvis_muted" />
+                android:textSize="13sp" />
+
+            <Spinner
+                android:id="@+id/spinnerLanguage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp" />
+
+            <TextView
+                android:id="@+id/txtVoiceStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/jarvis_muted"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/btnTtsVoices"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Install Hindi / Urdu voice" />
 
             <EditText
                 android:id="@+id/inputCountry"

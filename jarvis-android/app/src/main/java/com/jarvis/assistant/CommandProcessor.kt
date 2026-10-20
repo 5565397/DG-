@@ -52,7 +52,13 @@ class CommandProcessor(private val ctx: Context) {
         get() = Result("I need phone control for that, $sir. Open my app and enable it under Setup, step two.")
 
     fun handle(input: String): Result {
-        val c = input.lowercase(Locale.US)
+        // Hindi / Urdu: map common commands offline; send everything else to the AI brain.
+        val nonEnglishMode = !prefs.language.startsWith("en")
+        val translated = if (nonEnglishMode || Hindustani.isNonLatin(input)) Hindustani.toEnglish(input) else null
+        if (translated == null && Hindustani.isNonLatin(input)) {
+            return if (hasBrain) Result("", ask = input.trim()) else Result(Lang.get(prefs, Lang.Line.NO_BRAIN))
+        }
+        val c = (translated ?: input).lowercase(Locale.US)
             .replace(Regex("[^a-z0-9:'%+@.\\- ]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()

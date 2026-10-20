@@ -230,7 +230,7 @@ class JarvisService : Service(), RecognitionListener {
             val command = WakeWord.extract(candidate) ?: continue
             if (command.isBlank()) {
                 awaitingCommand = true
-                say("Yes, ${prefs.title}?")
+                say(Lang.get(prefs, Lang.Line.YES))
             } else {
                 handleCommand(command)
             }
@@ -259,7 +259,7 @@ class JarvisService : Service(), RecognitionListener {
         }
         if (awaitingCommand) {
             awaitingCommand = false
-            say(if (silence) "I didn't catch that, ${prefs.title}." else "My hearing glitched. Try again, ${prefs.title}.")
+            say(Lang.get(prefs, if (silence) Lang.Line.DIDNT_CATCH else Lang.Line.GLITCH))
             return
         }
         if (wakeMode) {
@@ -307,7 +307,7 @@ class JarvisService : Service(), RecognitionListener {
         val command = WakeWord.strip(raw)
         if (command.isBlank()) {
             awaitingCommand = true
-            say("Yes, ${prefs.title}?")
+            say(Lang.get(prefs, Lang.Line.YES))
             return
         }
         if (prefs.lockEnabled && prefs.hasVoiceprint() && !isUnlocked()) {
@@ -315,7 +315,7 @@ class JarvisService : Service(), RecognitionListener {
             busy = true
             stopListening()
             JarvisBus.status("Voice check: say anything after the beep")
-            speaker.speak("Voice check, ${prefs.title}. Say your passphrase after the beep.") { verifyThenRun() }
+            speaker.speak(Lang.get(prefs, Lang.Line.VOICE_CHECK)) { verifyThenRun() }
             return
         }
         execute(command)
@@ -334,13 +334,13 @@ class JarvisService : Service(), RecognitionListener {
                 val command = pendingCommand
                 pendingCommand = null
                 when {
-                    score < 0f -> say("I couldn't use the microphone for the voice check. Try again, ${prefs.title}.")
+                    score < 0f -> say(Lang.get(prefs, Lang.Line.MIC_FAIL))
                     score >= prefs.threshold && command != null -> {
                         unlockedUntil = System.currentTimeMillis() + prefs.unlockMinutes * 60_000L
                         JarvisBus.status("Voice match (${"%.2f".format(score)}). Unlocked.")
                         execute(command)
                     }
-                    else -> say("Voice not recognized. Access denied.")
+                    else -> say(Lang.get(prefs, Lang.Line.VOICE_DENIED))
                 }
             }
         }.start()
@@ -349,6 +349,16 @@ class JarvisService : Service(), RecognitionListener {
     private fun execute(command: String) {
         JarvisBus.status("Command: $command")
         val result = processor.handle(command)
+        applyControl(result)
+        val question = result.ask
+        if (question != null) {
+            think(question)
+            return
+        }
+        say(result.reply, result.after)
+    }
+
+    private fun applyControl(result: CommandProcessor.Result) {
         when (result.control) {
             CommandProcessor.Control.STOP_LISTENING -> {
                 wakeMode = false
@@ -358,9 +368,16 @@ class JarvisService : Service(), RecognitionListener {
             CommandProcessor.Control.NEW_CHAT -> brain.forget()
             CommandProcessor.Control.NONE -> {}
         }
-        val question = result.ask
-        if (question != null) {
-            think(question)
+    }
+
+    /** Runs a phone command that the AI translated (e.g. from Hindi or Urdu). */
+    private fun runAiCommand(command: String) {
+        JarvisBus.status("Command: $command")
+        val result = processor.handle(command)
+        applyControl(result)
+        // Never bounce back to the AI a second time.
+        if (result.ask != null) {
+            say(Lang.get(prefs, Lang.Line.CANT_DO))
             return
         }
         say(result.reply, result.after)
@@ -369,13 +386,18 @@ class JarvisService : Service(), RecognitionListener {
     private fun think(question: String) {
         busy = true
         stopListening()
-        JarvisBus.status("Thinking...", true)
+        JarvisBus.status(Lang.get(prefs, Lang.Line.THINKING), true)
         Thread {
-            val answer = brain.ask(question)
+            val reply = brain.ask(question)
             main.post {
                 busy = false
+                val command = reply.command
+                if (command != null) {
+                    runAiCommand(command)
+                    return@post
+                }
                 // Listen once more for a follow-up question, without needing the wake word.
-                say(answer) {
+                say(reply.speech) {
                     awaitingCommand = true
                     quietFollowUp = true
                 }

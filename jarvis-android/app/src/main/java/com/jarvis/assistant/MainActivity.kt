@@ -10,7 +10,10 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.speech.tts.TextToSpeech
 import android.view.View
+import android.widget.ArrayAdapter
+import android.widget.Spinner
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
@@ -154,18 +157,31 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
 
         // ----- Preferences -----
         val inputTitle = findViewById<EditText>(R.id.inputTitle)
-        val inputLanguage = findViewById<EditText>(R.id.inputLanguage)
+        val spinnerLanguage = findViewById<Spinner>(R.id.spinnerLanguage)
+        spinnerLanguage.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_dropdown_item, LANGUAGES.map { it.first }
+        )
+        spinnerLanguage.setSelection(LANGUAGES.indexOfFirst { it.second == prefs.language }.coerceAtLeast(0))
+        findViewById<Button>(R.id.btnTtsVoices).setOnClickListener {
+            try {
+                startActivity(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA))
+            } catch (e: Exception) {
+                startActivity(Intent("com.android.settings.TTS_SETTINGS"))
+            }
+            toast("Download the Hindi and/or Urdu voice, then come back.")
+        }
         val inputCountry = findViewById<EditText>(R.id.inputCountry)
         val inputUnlock = findViewById<EditText>(R.id.inputUnlock)
         val inputApiKey = findViewById<EditText>(R.id.inputApiKey)
         inputApiKey.setText(prefs.apiKey)
         inputTitle.setText(prefs.title)
-        inputLanguage.setText(prefs.language)
         inputCountry.setText(prefs.countryCode)
         inputUnlock.setText(prefs.unlockMinutes.toString())
         findViewById<Button>(R.id.btnSave).setOnClickListener {
             prefs.title = inputTitle.text.toString().trim().ifEmpty { "sir" }
-            prefs.language = inputLanguage.text.toString().trim().ifEmpty { "en-US" }
+            prefs.language = LANGUAGES[spinnerLanguage.selectedItemPosition.coerceIn(0, LANGUAGES.size - 1)].second
+            updateVoiceStatus()
+            if (JarvisService.isRunning && JarvisService.wakeMode) sendToJarvis(JarvisService.ACTION_START_WAKE)
             prefs.countryCode = inputCountry.text.toString().trim()
             prefs.apiKey = inputApiKey.text.toString().trim()
             prefs.unlockMinutes = inputUnlock.text.toString().trim().toIntOrNull()?.coerceIn(0, 720) ?: 5
@@ -182,6 +198,35 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         onStatus(if (JarvisService.isRunning) JarvisBus.lastStatus else "Offline", JarvisBus.lastListening)
         refreshSetup()
         updateVoiceInfo()
+        updateVoiceStatus()
+    }
+
+    /** Tells the user whether the phone can actually speak the chosen language. */
+    private fun updateVoiceStatus() {
+        val view = findViewById<TextView>(R.id.txtVoiceStatus)
+        val lang = prefs.language
+        if (lang.startsWith("en")) {
+            view.text = ""
+            return
+        }
+        var probe: TextToSpeech? = null
+        probe = TextToSpeech(applicationContext) { status ->
+            val tts = probe
+            val text = if (status != TextToSpeech.SUCCESS || tts == null) {
+                "Couldn't check the phone's voices."
+            } else {
+                val hindi = tts.isLanguageAvailable(java.util.Locale("hi", "IN")) >= TextToSpeech.LANG_AVAILABLE
+                val urdu = tts.isLanguageAvailable(java.util.Locale("ur", "PK")) >= TextToSpeech.LANG_AVAILABLE
+                when {
+                    lang.startsWith("ur") && urdu -> "\u2713 Urdu voice installed."
+                    lang.startsWith("ur") && hindi -> "No Urdu voice on this phone, so Jarvis will speak Urdu with the Hindi voice (sounds almost the same). Tap below to install the Urdu voice."
+                    lang.startsWith("hi") && hindi -> "\u2713 Hindi voice installed."
+                    else -> "This phone has no Hindi/Urdu voice yet. Tap below and download it, or Jarvis will stay silent in this language."
+                }
+            }
+            runOnUiThread { view.text = text }
+            tts?.shutdown()
+        }
     }
 
     override fun onPause() {
@@ -392,9 +437,20 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
     companion object {
+        /** Spinner label to speech-recognition language tag. */
+        private val LANGUAGES = listOf(
+            "English (US)" to "en-US",
+            "English (India / Pakistan accent)" to "en-IN",
+            "English (UK)" to "en-GB",
+            "\u0939\u093F\u0928\u094D\u0926\u0940  Hindi" to "hi-IN",
+            "\u0627\u0631\u062F\u0648  Urdu" to "ur-PK"
+        )
+
         private val HELP_TEXT = """
             THINGS YOU CAN SAY
             (start with "Jarvis" when the wake word is on)
+
+            HINDI / URDU: pick the language in Preferences. Then e.g. "Jarvis, टॉर्च जलाओ", "Jarvis, آواز بڑھاؤ", "YouTube kholo", "अरिजीत के गाने यूट्यूब पर चलाओ", "وقت کیا ہوا ہے". With the AI key, Jarvis understands anything in Hindi/Urdu and answers in the same language.
 
             ASK ANYTHING (needs a Claude API key): "Who won the match last night?", "Explain black holes simply", "Tell me a joke", "What should I cook tonight?" — then just ask a follow-up, no wake word needed. "New conversation" clears its memory.
 
