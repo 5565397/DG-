@@ -148,7 +148,10 @@ object CommandParser {
 
         // ----- Flashlight -----
         r = m("(?:turn |switch )?(on|off) (?:the |my )?(?:flash ?light|torch|flash|torch light)|(?:turn |switch )?(?:the |my )?(?:flash ?light|torch|flash|torch light) (on|off)")
-        if (r != null) return Action.Torch(r.groupValues[1].ifEmpty { r.groupValues[2] } == "on")
+        if (r != null) {
+            val g = r.groupValues
+            return Action.Torch(g[1].ifEmpty { g[2] } == "on")
+        }
         if (m("(flash ?light|torch|light on|lights on)") != null) return Action.Torch(true)
         if (m("(light off|lights off)") != null) return Action.Torch(false)
 
