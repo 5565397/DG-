@@ -36,8 +36,12 @@ class AiBrain(context: Context) {
     private var client: AnthropicClient? = null
     private var clientKey: String? = null
 
-    /** Alternating user / assistant turns. */
-    private val history = ArrayList<Pair<String, String>>()
+    companion object {
+        /** Alternating user / assistant turns, shared by every AiBrain so one conversation continues across screens. */
+        private val history = ArrayList<Pair<String, String>>()
+
+        fun forgetAll() = synchronized(history) { history.clear() }
+    }
 
     val hasKey: Boolean get() = prefs.aiActive
     private val groq = GroqClient(prefs)
@@ -68,9 +72,11 @@ class AiBrain(context: Context) {
 
             ${languageRule()}
 
-            Phone actions: if the user is asking you to operate the phone (open an app, call or message someone, play something, set an alarm or timer, toggle a setting, navigate somewhere, take a photo or screenshot, scroll, go back, and so on), don't answer conversationally. Reply with exactly one line and nothing else:
+            Questions and requests for information: answer them yourself, directly and helpfully — facts, explanations, advice, translations, maths, writing, and what is publicly known about people, places, companies and events. Never send the user off to search; you are the answer. For a public figure, share what is publicly known. You have no access to private people's personal records or contact details; if asked, say so in one sentence and offer what you can do instead.
+
+            Phone actions: only when the user clearly wants you to operate the phone (open an app, call or message someone, play something, set an alarm or timer, toggle a setting, navigate somewhere, take a photo or screenshot, scroll, go back, and so on), reply with exactly one line and nothing else:
             CMD: <the request as a short English command>
-            Examples: "CMD: open YouTube", "CMD: call Ammi", "CMD: send a message to Ali saying I am on my way", "CMD: WhatsApp Sara saying see you at 8", "CMD: set an alarm for 6:30 am", "CMD: set a timer for 10 minutes", "CMD: turn on bluetooth", "CMD: play Atif Aslam songs on YouTube", "CMD: navigate to Lahore airport". Write names of people, apps and places in English letters.
+            Examples: "CMD: open YouTube", "CMD: call Ammi", "CMD: send a message to Ali saying I am on my way", "CMD: WhatsApp Sara saying see you at 8", "CMD: set an alarm for 6:30 am", "CMD: set a timer for 10 minutes", "CMD: turn on bluetooth", "CMD: play Atif Aslam songs on YouTube", "CMD: navigate to Lahore airport". Write names of people, apps and places in English letters. Never use CMD for questions or for searching — answer those yourself.
 
             Current date and time on the phone: $now.
         """.trimIndent() + personalContext().let { if (it.isEmpty()) "" else "\n\n$it" }
@@ -86,9 +92,13 @@ class AiBrain(context: Context) {
         else -> en
     }
 
-    private val timeSensitive = Regex(
-        "weather|news|today|tonight|tomorrow|latest|score|match|price|rate|stock|who won|current|right now|" +
-            "موسم|خبر|آج|کل|میچ|قیمت|ریٹ|سکور|اسکور|تازہ|मौसम|खबर|ख़बर|आज|कल|मैच|कीमत|स्कोर|ताज़ा|mausam|khabar|aaj",
+    /** Questions that are better answered with live web results when the engine has them. */
+    private val needsWebRegex = Regex(
+        "weather|news|today|tonight|tomorrow|latest|score|match|price|rate|stock|who won|current|right now|who is|what is|" +
+            "information|info|details|data|about|biography|net worth|age of|how old|population|" +
+            "موسم|خبر|آج|کل|میچ|قیمت|ریٹ|سکور|اسکور|تازہ|کون ہے|کون ہیں|کے بارے|معلومات|ڈیٹا|تفصیل|" +
+            "मौसम|खबर|ख़बर|आज|कल|मैच|कीमत|स्कोर|ताज़ा|कौन है|कौन हैं|के बारे|जानकारी|डेटा|" +
+            "mausam|khabar|aaj|kaun hai|kon hai|bare mein|baare mein|maloomat|jankari",
         RegexOption.IGNORE_CASE
     )
 
@@ -110,20 +120,32 @@ class AiBrain(context: Context) {
     }
 
     /** Returns what to speak, or a phone command to run. Never throws. [screenJpeg] is an optional base64 screenshot. */
-    fun ask(question: String, screenJpeg: String? = null): Reply {
+    fun ask(question: String, screenJpeg: String? = null, remember: Boolean = true): Reply {
         if (!hasKey) return Reply(Lang.get(prefs, Lang.Line.NO_BRAIN), failed = true)
         val raw = when (prefs.aiEngine) {
             Prefs.ENGINE_GROQ -> askGroq(question, screenJpeg)
             else -> askClaude(question, screenJpeg)
         }
         if (raw.error != null) return Reply(raw.error, failed = true)
-        val text = raw.text.replace(Regex("<think>[\\s\\S]*?</think>"), "").trim()
-        val command = Regex("(?m)^\\s*CMD:\\s*(.+)$").find(text)?.groupValues?.get(1)?.trim()
+        var text = stripThinking(raw.text)
+        var command = commandIn(text)
+        // The model chose "search" for something the user wanted answered: ask it to answer.
+        if (command != null && Regex("^(search|google|look up|find|browse)\\b", RegexOption.IGNORE_CASE).containsMatchIn(command)) {
+            val retry = when (prefs.aiEngine) {
+                Prefs.ENGINE_GROQ -> askGroq("$question\n\n(Answer this yourself in plain speech. Do not reply with CMD.)", screenJpeg, forceWeb = true)
+                else -> askClaude("$question\n\n(Answer this yourself in plain speech. Do not reply with CMD.)", screenJpeg)
+            }
+            if (retry.error == null) {
+                text = stripThinking(retry.text)
+                command = commandIn(text)?.takeUnless { Regex("^(search|google|look up|find|browse)\\b", RegexOption.IGNORE_CASE).containsMatchIn(it) }
+                if (command == null) text = text.replace(Regex("(?m)^\\s*CMD:.*$"), "").trim()
+            }
+        }
         val answer = if (command != null) "" else cleanForSpeech(text)
         if (command == null && answer.isBlank()) return Reply(t("I came up empty on that one, ${prefs.title}.", "इसका जवाब नहीं मिला।", "اس کا جواب نہیں ملا۔"))
 
-        synchronized(history) {
-            history.add((if (screenJpeg != null) "[about my screen] $question" else question) to (if (command != null) "CMD: $command" else answer))
+        if (remember) synchronized(history) {
+            history.add((if (screenJpeg != null) "[about my screen] $question" else question) to (if (command != null) "(Done on the phone: $command)" else answer))
             while (history.size > 8) history.removeAt(0)
         }
         return Reply(answer, command)
@@ -131,13 +153,17 @@ class AiBrain(context: Context) {
 
     private class Raw(val text: String = "", val error: String? = null)
 
-    private fun askGroq(question: String, screenJpeg: String?): Raw {
+    private fun stripThinking(text: String) = text.replace(Regex("<think>[\\s\\S]*?</think>"), "").trim()
+
+    private fun commandIn(text: String) = Regex("(?m)^\\s*CMD:\\s*(.+)$").find(text)?.groupValues?.get(1)?.trim()?.trim('"', '.')
+
+    private fun askGroq(question: String, screenJpeg: String?, forceWeb: Boolean = false): Raw {
         val past = synchronized(history) {
             history.flatMap { (q, a) -> listOf(GroqClient.Msg("user", q), GroqClient.Msg("assistant", a)) }
         }
         val prompt = if (screenJpeg != null) "This is a screenshot of my phone screen right now. $question" else question
         return try {
-            Raw(groq.chat(systemPrompt(), past, prompt, screenJpeg, needsWeb = timeSensitive.containsMatchIn(question)))
+            Raw(groq.chat(systemPrompt(), past, prompt, screenJpeg, needsWeb = forceWeb || needsWebRegex.containsMatchIn(question)))
         } catch (e: GroqClient.GroqException) {
             Raw(error = when (e.code) {
                 401, 403 -> t("My Groq key was rejected, ${prefs.title}. Please check it in Settings.", "Groq की key काम नहीं कर रही। सेटिंग्स में देख लीजिए।", "Groq کی key کام نہیں کر رہی۔ سیٹنگز میں دیکھ لیجیے۔")

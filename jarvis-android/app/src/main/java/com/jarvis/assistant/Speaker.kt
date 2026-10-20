@@ -100,6 +100,13 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         main.post(cb)
     }
 
+    /** Stops talking right away without running any "done" callbacks (used when the user interrupts). */
+    fun stopSilently() {
+        synchronized(callbacks) { callbacks.clear() }
+        queued.clear()
+        if (ready) tts.stop()
+    }
+
     fun shutdown() {
         main.removeCallbacksAndMessages(null)
         tts.stop()

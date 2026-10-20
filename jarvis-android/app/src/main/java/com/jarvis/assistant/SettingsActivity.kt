@@ -102,7 +102,7 @@ class SettingsActivity : AppCompatActivity() {
                 .show()
         }
         if (!prefs.language.startsWith("en")) {
-            val wantUrdu = prefs.language.startsWith("ur")
+            val wantUrdu = prefs.language.startsWith("ur") || prefs.language == Lang.AUTO
             val hasVoice = if (wantUrdu) (urduVoice == true || hindiVoice == true) else hindiVoice == true
             val subtitle = when {
                 hindiVoice == null -> "Checking the phone's voices…"
@@ -241,7 +241,20 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun buildMemory() {
-        val card = section("MEMORY")
+        val card = section("MEMORY & CHAT")
+        val chatCount = ChatStore.all(this).size
+        row(card, "Clear chat history", if (chatCount == 0) "The chat is empty." else "$chatCount messages on this phone.") {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Clear the chat?")
+                .setMessage("This removes the conversation from this phone. Voxa also starts a fresh AI conversation.")
+                .setPositiveButton("Clear") { _, _ ->
+                    ChatStore.clear(this)
+                    AiBrain.forgetAll()
+                    rebuild()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
         val memories = prefs.memories
         row(card, "Things I remember", if (memories.isEmpty()) "Say \"Voxa, remember that…\"" else "${memories.size} saved", value = null) {
             if (memories.isEmpty()) {
@@ -273,7 +286,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Voxa 3.1"
+        tv.text = "Voxa 3.2"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER
@@ -572,7 +585,7 @@ class SettingsActivity : AppCompatActivity() {
         aiMessage = if (groq) "Contacting Groq…" else "Contacting Claude…"
         rebuild()
         Thread {
-            val reply = AiBrain(this).ask("Connection test. Reply with one short word.")
+            val reply = AiBrain(this).ask("Connection test. Reply with one short word.", remember = false)
             val model = if (groq) (try { GroqClient(prefs).currentModel() } catch (e: Exception) { null }) else "claude-opus-5-5"
             runOnUiThread {
                 aiMessage = if (reply.failed) reply.speech
@@ -610,6 +623,7 @@ class SettingsActivity : AppCompatActivity() {
         )
 
         private val LANGUAGES = listOf(
+            "Auto · Urdu + Hindi + English" to Lang.AUTO,
             "English (US)" to "en-US",
             "English (South Asian accent)" to "en-IN",
             "English (UK)" to "en-GB",

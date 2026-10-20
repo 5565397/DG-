@@ -1,12 +1,26 @@
 package com.jarvis.assistant
 
 /**
- * Voxa's own lines in English, Hindi and Urdu. Urdu falls back to the Hindi
- * (Devanagari) wording when the phone has no Urdu text-to-speech voice — spoken
- * aloud the two sound nearly the same.
+ * Voxa's own lines in English, Hindi and Urdu, and which language to speak.
+ * In "Auto" mode Voxa answers in the language of what you last said or typed.
+ * Urdu falls back to the Hindi (Devanagari) wording when the phone has no Urdu
+ * text-to-speech voice — spoken aloud the two sound nearly the same.
  */
 object Lang {
     enum class Line { YES, DIDNT_CATCH, GLITCH, VOICE_CHECK, VOICE_DENIED, MIC_FAIL, NO_BRAIN, CANT_DO, THINKING }
+
+    const val AUTO = "auto"
+
+    /** Language of the latest thing the user said or typed ("en", "hi", "ur"). */
+    @Volatile var lastInput: String = "ur"
+        private set
+
+    /** Call with every user message; [recognizerTag] is the language the recognizer detected, if any. */
+    fun noteInput(text: String, recognizerTag: String? = null) {
+        val byScript = LangDetect.detect(text)
+        // Latin letters can be English or Roman Urdu; the recognizer's own detection settles it when it has one.
+        lastInput = if (byScript == "en") LangDetect.fromTag(recognizerTag) ?: "en" else byScript
+    }
 
     fun get(prefs: Prefs, line: Line): String {
         val sir = prefs.title
@@ -17,12 +31,22 @@ object Lang {
         }
     }
 
-    /** "en", "hi" or "ur" — the language Voxa should talk in. */
-    fun mode(prefs: Prefs): String = when {
-        prefs.language.startsWith("hi") -> "hi"
+    /** "en", "hi" or "ur" — the language Voxa should talk in right now. */
+    fun mode(prefs: Prefs): String {
+        val wanted = when {
+            prefs.language == AUTO -> lastInput
+            prefs.language.startsWith("hi") -> "hi"
+            prefs.language.startsWith("ur") -> "ur"
+            else -> "en"
+        }
         // Without an Urdu voice, Urdu script would be read in silence — use the Hindi voice instead.
-        prefs.language.startsWith("ur") -> if (Speaker.urduVoice || !Speaker.voicesChecked) "ur" else "hi"
-        else -> "en"
+        return if (wanted == "ur" && Speaker.voicesChecked && !Speaker.urduVoice) "hi" else wanted
+    }
+
+    /** Whether Urdu/Hindi command words should be recognised in the current input. */
+    fun hindustaniInput(prefs: Prefs): Boolean = when {
+        prefs.language == AUTO -> lastInput != "en"
+        else -> !prefs.language.startsWith("en")
     }
 
     private fun english(line: Line, sir: String) = when (line) {
@@ -32,9 +56,9 @@ object Lang {
         Line.VOICE_CHECK -> "Voice check, $sir. Say your passphrase after the beep."
         Line.VOICE_DENIED -> "Voice not recognized. Access denied."
         Line.MIC_FAIL -> "I couldn't use the microphone for the voice check. Try again, $sir."
-        Line.NO_BRAIN -> "Online AI is off, $sir. Turn on Groq or Claude in Settings to ask me anything."
+        Line.NO_BRAIN -> "Online AI is off, $sir. Turn on Groq in Settings to ask me anything."
         Line.CANT_DO -> "I'm not sure how to do that on this phone, $sir."
-        Line.THINKING -> "Thinking..."
+        Line.THINKING -> "Thinking…"
     }
 
     private fun hindi(line: Line, sir: String) = when (line) {
@@ -46,7 +70,7 @@ object Lang {
         Line.MIC_FAIL -> "आवाज़ की जाँच के लिए माइक नहीं मिला। फिर से कोशिश कीजिए, $sir।"
         Line.NO_BRAIN -> "ऑनलाइन AI बंद है, $sir। कुछ भी पूछने के लिए सेटिंग्स में Groq चालू कर दीजिए।"
         Line.CANT_DO -> "यह काम इस फ़ोन पर कैसे करूँ, मुझे पक्का नहीं पता, $sir।"
-        Line.THINKING -> "सोच रही हूँ..."
+        Line.THINKING -> "सोच रही हूँ…"
     }
 
     private fun urdu(line: Line, sir: String) = when (line) {
@@ -58,6 +82,6 @@ object Lang {
         Line.MIC_FAIL -> "آواز کی جانچ کے لیے مائیک نہیں ملا۔ دوبارہ کوشش کیجیے، $sir۔"
         Line.NO_BRAIN -> "آن لائن اے آئی بند ہے، $sir۔ کچھ بھی پوچھنے کے لیے سیٹنگز میں Groq آن کر دیجیے۔"
         Line.CANT_DO -> "یہ کام اس فون پر کیسے کروں، مجھے پکا نہیں پتا، $sir۔"
-        Line.THINKING -> "سوچ رہی ہوں..."
+        Line.THINKING -> "سوچ رہی ہوں…"
     }
 }

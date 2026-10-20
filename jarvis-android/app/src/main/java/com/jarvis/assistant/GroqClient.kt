@@ -36,17 +36,23 @@ class GroqClient(private val prefs: Prefs) {
 
     /** Sends a chat and returns the reply text. [imageJpeg] makes it a vision request; [needsWeb] prefers a web-search model. */
     fun chat(system: String, history: List<Msg>, question: String, imageJpeg: String?, needsWeb: Boolean): String {
+        val webModel = needsWeb && imageJpeg == null
         val model = when {
             imageJpeg != null -> pickModel(VISION_PREFERENCE, vision = true) ?: pickModel(CHAT_PREFERENCE)
-            needsWeb -> pickModel(WEB_PREFERENCE, exact = true) ?: pickModel(CHAT_PREFERENCE)
+            // Groq's compound models search the web themselves; try them even if the list didn't show them.
+            webModel -> pickModel(WEB_PREFERENCE, exact = true) ?: WEB_PREFERENCE.first()
             else -> pickModel(CHAT_PREFERENCE)
         } ?: throw GroqException(404, "No Groq chat model available")
         val canSeeImage = imageJpeg != null && model in VISION_PREFERENCE
         return try {
             send(model, system, history, question, if (canSeeImage) imageJpeg else null)
         } catch (e: GroqException) {
-            // Model retired or not allowed: refresh the list once and try the next best one.
-            if (e.code == 404 || (e.code == 400 && e.message.orEmpty().contains("model", ignoreCase = true))) {
+            if (webModel && e.code != 401 && e.code != 429) {
+                // Web model unavailable on this key: answer with the normal chat model instead.
+                val fallback = pickModel(CHAT_PREFERENCE) ?: throw e
+                send(fallback, system, history, question, null)
+            } else if (e.code == 404 || (e.code == 400 && e.message.orEmpty().contains("model", ignoreCase = true))) {
+                // Model retired or not allowed: refresh the list once and try the next best one.
                 prefs.groqModels = emptyList()
                 val retry = pickModel(CHAT_PREFERENCE) ?: throw e
                 send(retry, system, history, question, null)
@@ -108,7 +114,7 @@ class GroqClient(private val prefs: Prefs) {
             .put("model", model)
             .put("messages", messages)
             .put("temperature", 0.6)
-            .put("max_tokens", 1024)
+            .put("max_completion_tokens", 1024)
         val body = request("POST", "$BASE/chat/completions", payload.toString())
         val choice = JSONObject(body).optJSONArray("choices")?.optJSONObject(0)
         return choice?.optJSONObject("message")?.optString("content").orEmpty()

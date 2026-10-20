@@ -10,8 +10,10 @@ object JarvisBus {
 
     interface Listener {
         fun onState(state: State, status: String)
-        fun onHeard(text: String)
-        fun onReply(text: String)
+        /** Live words while you're still speaking ("" clears it). */
+        fun onPartial(text: String)
+        fun onChat(message: ChatStore.Message)
+        fun onChatCleared()
         fun onLevel(level: Float)
     }
 
@@ -19,10 +21,6 @@ object JarvisBus {
     @Volatile var state = State.OFFLINE
         private set
     @Volatile var status = ""
-        private set
-    @Volatile var lastHeard = ""
-        private set
-    @Volatile var lastReply = ""
         private set
 
     private val main = Handler(Looper.getMainLooper())
@@ -36,15 +34,16 @@ object JarvisBus {
     /** Status text without changing the state. */
     fun status(text: String) = state(state, text)
 
-    fun heard(text: String) {
-        lastHeard = text
-        main.post { listener?.onHeard(text) }
+    fun partial(text: String) {
+        main.post { listener?.onPartial(text) }
     }
 
-    fun reply(text: String) {
-        if (text.isBlank()) return
-        lastReply = text
-        main.post { listener?.onReply(text) }
+    fun chat(message: ChatStore.Message) {
+        main.post { listener?.onChat(message) }
+    }
+
+    fun chatCleared() {
+        main.post { listener?.onChatCleared() }
     }
 
     /** Microphone loudness from the recognizer, roughly -2..10 dB, mapped to 0..1. */

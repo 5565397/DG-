@@ -88,7 +88,7 @@ class CommandProcessor(private val ctx: Context) {
     // ---------------------------------------------------------------- entry
 
     fun handle(input: String): Result {
-        val action = CommandParser.parse(input, nonEnglishMode = !prefs.language.startsWith("en"))
+        val action = CommandParser.parse(input, nonEnglishMode = Lang.hindustaniInput(prefs))
         return try {
             execute(action)
         } catch (e: SecurityException) {
