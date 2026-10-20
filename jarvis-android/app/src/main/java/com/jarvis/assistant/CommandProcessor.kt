@@ -2,7 +2,7 @@ package com.jarvis.assistant
 
 import android.Manifest
 import android.accessibilityservice.AccessibilityService
-import android.app.ActivityNotFoundException
+import android.content.ActivityNotFoundException
 import android.app.SearchManager
 import android.content.Context
 import android.content.Intent
@@ -140,7 +140,10 @@ class CommandProcessor(private val ctx: Context) {
 
         // ----- Flashlight -----
         r = m("(?:turn |switch )?(on|off) (?:the )?(?:flash ?light|torch|flash)|(?:turn |switch )?(?:the )?(?:flash ?light|torch|flash) (on|off)")
-        if (r != null) return torch(r.groupValues[1].ifEmpty { r.groupValues[2] } == "on")
+        if (r != null) {
+            val g = r.groupValues
+            return torch(g[1].ifEmpty { g[2] } == "on")
+        }
         if (m("(flash ?light|torch|light on)") != null) return torch(true)
         if (m("(light off)") != null) return torch(false)
 
