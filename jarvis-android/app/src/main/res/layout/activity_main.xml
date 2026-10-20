@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/jarvis_bg"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:letterSpacing="0.3"
+            android:text="J.A.R.V.I.S."
+            android:textColor="@color/jarvis_cyan"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="Just A Rather Very Intelligent System"
+            android:textColor="@color/jarvis_muted"
+            android:textSize="12sp" />
+
+        <FrameLayout
+            android:layout_width="230dp"
+            android:layout_height="230dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="24dp">
+
+            <View
+                android:id="@+id/ring"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/ring" />
+
+            <TextView
+                android:id="@+id/btnMic"
+                android:layout_width="160dp"
+                android:layout_height="160dp"
+                android:layout_gravity="center"
+                android:background="@drawable/core_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:letterSpacing="0.15"
+                android:text="TAP\nTO SPEAK"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/txtStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:gravity="center"
+            android:text="Offline"
+            android:textColor="@color/jarvis_cyan"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/txtHeard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:textColor="@color/jarvis_text"
+            android:textSize="15sp"
+            android:textStyle="italic" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/inputCommand"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Or type a command..."
+                android:imeOptions="actionGo"
+                android:inputType="text"
+                android:textColor="@color/jarvis_text"
+                android:textColorHint="@color/jarvis_muted" />
+
+            <Button
+                android:id="@+id/btnRun"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Run" />
+        </LinearLayout>
+
+        <!-- Always listening -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/panel"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="WAKE WORD"
+                android:textColor="@color/jarvis_cyan"
+                android:textStyle="bold" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchWake"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Always listen for &quot;Jarvis&quot;"
+                android:textColor="@color/jarvis_text" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Say &quot;Jarvis, open YouTube&quot; any time, even with the app closed. Uses more battery."
+                android:textColor="@color/jarvis_muted"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- Voice lock -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/panel"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="VOICE LOCK"
+                android:textColor="@color/jarvis_cyan"
+                android:textStyle="bold" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchLock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Only obey my voice"
+                android:textColor="@color/jarvis_text" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnEnroll"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:text="Record my voice" />
+
+                <Button
+                    android:id="@+id/btnTest"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:text="Test a voice" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/txtVoiceInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="@color/jarvis_text"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/txtThreshold"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textColor="@color/jarvis_text"
+                android:textSize="13sp" />
+
+            <SeekBar
+                android:id="@+id/seekThreshold"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="48" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Tip: test your own voice, then ask a friend to test theirs. Set the strictness between the two scores."
+                android:textColor="@color/jarvis_muted"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- Setup -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/panel"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="SETUP (do all 5 once)"
+                android:textColor="@color/jarvis_cyan"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnPerms"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp" />
+
+            <Button
+                android:id="@+id/btnAccess"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <Button
+                android:id="@+id/btnOverlay"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <Button
+                android:id="@+id/btnWriteSettings"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <Button
+                android:id="@+id/btnBattery"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- Preferences -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/panel"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="PREFERENCES"
+                android:textColor="@color/jarvis_cyan"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/inputTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="What should Jarvis call you? (sir)"
+                android:inputType="text"
+                android:textColor="@color/jarvis_text"
+                android:textColorHint="@color/jarvis_muted" />
+
+            <EditText
+                android:id="@+id/inputLanguage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Speech language (en-US, en-IN, en-GB)"
+                android:inputType="text"
+                android:textColor="@color/jarvis_text"
+                android:textColorHint="@color/jarvis_muted" />
+
+            <EditText
+                android:id="@+id/inputCountry"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Country code for WhatsApp (e.g. 92, 91, 1)"
+                android:inputType="number"
+                android:textColor="@color/jarvis_text"
+                android:textColorHint="@color/jarvis_muted" />
+
+            <EditText
+                android:id="@+id/inputUnlock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Stay unlocked for N minutes (5)"
+                android:inputType="number"
+                android:textColor="@color/jarvis_text"
+                android:textColorHint="@color/jarvis_muted" />
+
+            <Button
+                android:id="@+id/btnSave"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Save" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/txtHelp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/panel"
+            android:lineSpacingExtra="3dp"
+            android:padding="16dp"
+            android:textColor="@color/jarvis_text"
+            android:textSize="13sp" />
+    </LinearLayout>
+</ScrollView>

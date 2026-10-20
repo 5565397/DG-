@@ -1,0 +1,50 @@
+name: Build Jarvis APK
+
+on:
+  push:
+    paths:
+      - "jarvis-android/**"
+      - ".github/workflows/jarvis-android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jarvis-android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build debug APK
+        run: gradle assembleDebug --stacktrace
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk Jarvis.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jarvis-APK
+          path: jarvis-android/Jarvis.apk
+
+      - name: Publish to "jarvis-latest" release (easy phone download)
+        uses: softprops/action-gh-release@v2
+        continue-on-error: true
+        with:
+          tag_name: jarvis-latest
+          name: Jarvis (latest build)
+          prerelease: true
+          files: jarvis-android/Jarvis.apk

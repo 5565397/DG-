@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_description">Lets Jarvis control your phone by voice: tap buttons, scroll, type text, go home or back, take screenshots, lock the screen and toggle quick settings. Jarvis only acts when you give it a command.</string>
+</resources>
