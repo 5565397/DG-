@@ -112,12 +112,12 @@ class CommandProcessor(private val ctx: Context) {
         if (m("(take|capture|grab) (a )?screen ?shot|screen ?shot") != null) {
             val s = a11y ?: return needA11y
             if (Build.VERSION.SDK_INT < 28) return Result("Screenshots need Android 9 or newer, $sir.")
-            return Result("Screenshot.") { main.postDelayed({ s.global(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT) }, 600) }
+            return Result("Screenshot.", after = { main.postDelayed({ s.global(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT) }, 600) })
         }
         if (m("lock (the |my )?(phone|screen|device|mobile)|lock it|turn off (the )?screen|screen off") != null) {
             val s = a11y ?: return needA11y
             if (Build.VERSION.SDK_INT < 28) return Result("Locking needs Android 9 or newer, $sir.")
-            return Result("Locking the phone.") { s.global(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) }
+            return Result("Locking the phone.", after = { s.global(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) })
         }
         r = m("scroll (up|down|left|right)|(?:swipe|go) (up|down|left|right)|page (up|down)")
         if (r != null) {
