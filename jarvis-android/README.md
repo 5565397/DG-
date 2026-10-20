@@ -16,6 +16,8 @@ Install it on the phone (allow "Install unknown apps" for your browser/file mana
 4. Allow *Modify system settings* (brightness).
 5. Turn off battery optimization for Jarvis (keeps the wake word alive).
 
+Optional — **AI brain:** paste a Claude API key (console.anthropic.com → API Keys) into *Preferences* and tap Save. Questions and anything Jarvis doesn't recognize as a phone command go to Claude (`claude-opus-5-5`, low effort, with web search for current facts). Usage is billed to your Anthropic account.
+
 Then: **Record my voice** → **Test a voice** → turn on **Only obey my voice** → turn on **Always listen for "Jarvis"**.
 
 ## How it works
@@ -24,6 +26,7 @@ Then: **Record my voice** → **Test a voice** → turn on **Only obey my voice*
 | Wake word + listening loop (foreground service) | `JarvisService.kt` |
 | Command understanding and actions | `CommandProcessor.kt` |
 | Tapping, scrolling, typing, global actions | `JarvisAccessibilityService.kt` |
+| AI answers (Claude API via the Java SDK) | `AiBrain.kt` |
 | Offline voiceprint (MFCC + cosine similarity) | `VoicePrint.kt` |
 | Speech output | `Speaker.kt` |
 | UI | `MainActivity.kt`, `res/layout/activity_main.xml` |
