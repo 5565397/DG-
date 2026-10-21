@@ -11,8 +11,8 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 16
-        versionName = "4.5"
+        versionCode = 17
+        versionName = "4.6"
     }
 
     // One fixed signing key for every build, so each new Voxa installs as an update of the last one

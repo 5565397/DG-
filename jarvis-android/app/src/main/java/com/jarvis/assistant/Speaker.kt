@@ -34,6 +34,29 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         @Volatile var voicesChecked = false
             private set
 
+        /** Last reason the online voice failed, shown once in the chat. */
+        @Volatile private var reportedError: String? = null
+        /** After a key/terms/limit error, don't wait on the online voice again for a while. */
+        @Volatile private var onlineVoiceOffUntil = 0L
+
+        // Android voices don't say whether they're female, but their names do (Google: en-in-x-ena…,
+        // Samsung: …SMTf00). Voxa is a woman, so female voices come first.
+        private val FEMALE_CODES = setOf("ena", "enc", "sfg", "iob", "iog", "tpc", "tpf", "gba", "gbc", "gbg", "hia", "hic", "cfn", "cfc", "aua", "auc", "cxx")
+        private val MALE_CODES = setOf("end", "ene", "iol", "iom", "tpd", "gbb", "gbd", "rjs", "hid", "hie", "aub", "aud", "cfm")
+
+        /** true = female, false = male, null = unknown. */
+        fun isFemale(voice: Voice): Boolean? {
+            val name = voice.name.lowercase(Locale.ROOT)
+            if (Regex("smtf\\d|female|-f\\d").containsMatchIn(name)) return true
+            if (Regex("smtm\\d|(?<!fe)male|-m\\d").containsMatchIn(name)) return false
+            val code = Regex("-x-([a-z]{3})").find(name)?.groupValues?.get(1) ?: return null
+            return when (code) {
+                in FEMALE_CODES -> true
+                in MALE_CODES -> false
+                else -> null
+            }
+        }
+
         /** Short lines ("Ji, sir?") are kept so the human voice answers instantly next time. */
         private const val CACHE_MAX_CHARS = 80
     }
@@ -140,6 +163,8 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         sameLanguage.firstOrNull { it.name == prefs.phoneVoice }?.let { return it }
         return sameLanguage.sortedWith(
             compareByDescending<Voice> { it.locale.country == locale.country }
+                .thenByDescending { isFemale(it) == true }
+                .thenBy { isFemale(it) == false }
                 .thenByDescending { it.quality }
                 // Google's "network" voices are its natural-sounding neural ones.
                 .thenByDescending { it.isNetworkConnectionRequired }
@@ -158,7 +183,13 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         return try {
             tts.voices.orEmpty()
                 .filter { it.locale.language == locale.language && TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features.orEmpty() }
-                .sortedWith(compareByDescending<Voice> { it.locale.country == locale.country }.thenByDescending { it.quality }.thenBy { it.name })
+                .sortedWith(
+                    compareByDescending<Voice> { it.locale.country == locale.country }
+                        .thenByDescending { isFemale(it) == true }
+                        .thenBy { isFemale(it) == false }
+                        .thenByDescending { it.quality }
+                        .thenBy { it.name }
+                )
         } catch (e: Exception) {
             emptyList()
         }
@@ -169,7 +200,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
     private fun speakHuman(text: String, onDone: (() -> Unit)?) {
         val groq = prefs.voiceEngine == Prefs.VOICE_GROQ
         // Groq's voice reads English letters only; Urdu or Hindi script goes to the phone voice.
-        if (groq && !Translit.isLatin(text)) {
+        if ((groq && !Translit.isLatin(text)) || System.currentTimeMillis() < onlineVoiceOffUntil) {
             speakPhone(text, onDone)
             return
         }
@@ -189,6 +220,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
                         if (groq) GroqClient(prefs).speech(piece, prefs.groqVoice) else ElevenLabs.speech(prefs.elevenKey, prefs.elevenVoiceId, piece)
                     }
                 } catch (e: Exception) {
+                    reportVoiceError(groq, e)
                     null
                 }
                 if (file == null) {
@@ -204,6 +236,23 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
                 main.post { if (myGeneration == generation) enqueue(file, last, id) }
             }
         }.start()
+    }
+
+    /** Tells the user once, in the chat, why the online voice isn't speaking (so it's not a mystery male voice). */
+    private fun reportVoiceError(groq: Boolean, e: Exception) {
+        val reason = when {
+            e is GroqClient.GroqException && e.message.orEmpty().contains("terms", true) ->
+                "Groq voice needs one-time approval: open console.groq.com → Playground, choose \"canopylabs/orpheus-v1-english\" and accept its terms. Until then the phone voice speaks."
+            e is GroqClient.GroqException && e.code == 401 -> "Groq rejected the key, so the phone voice is speaking. Check the key in Settings → AI Brain."
+            e is GroqClient.GroqException && e.code == 429 -> "Groq's voice limit is reached for now, so the phone voice is speaking."
+            e is GroqClient.GroqException -> "Groq voice error ${e.code}: ${e.message.orEmpty().take(120)}. The phone voice is speaking."
+            e is ElevenLabs.ElevenException -> "ElevenLabs voice error ${e.code}: ${e.message.orEmpty().take(120)}. The phone voice is speaking."
+            else -> null // no internet: nothing to fix, just carry on
+        } ?: return
+        onlineVoiceOffUntil = System.currentTimeMillis() + 10 * 60_000L
+        if (reason == reportedError) return
+        reportedError = reason
+        main.post { ChatStore.add(app, ChatStore.Role.NOTE, reason) }
     }
 
     /** Sentences joined up to [max] characters, so each request stays small and quick. */

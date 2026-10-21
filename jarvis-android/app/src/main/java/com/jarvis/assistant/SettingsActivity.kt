@@ -311,7 +311,12 @@ class SettingsActivity : AppCompatActivity() {
                 v.quality >= android.speech.tts.Voice.QUALITY_HIGH -> "high quality"
                 else -> "standard"
             }
-            "Voice ${i + 1} · ${v.locale.displayName} · $quality${if (v.isNetworkConnectionRequired) " · online" else ""}"
+            val gender = when (Speaker.isFemale(v)) {
+                true -> "Female · "
+                false -> "Male · "
+                null -> ""
+            }
+            "$gender${v.locale.displayName} · $quality${if (v.isNetworkConnectionRequired) " · online" else ""} (${i + 1})"
         }).toTypedArray()
         val current = voices.indexOfFirst { it.name == prefs.phoneVoice } + 1
         MaterialAlertDialogBuilder(this)
@@ -560,7 +565,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Voxa 4.5"
+        tv.text = "Voxa 4.6"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER
