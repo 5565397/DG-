@@ -7,7 +7,7 @@ import android.service.notification.StatusBarNotification
 
 /**
  * Lets Voxa read your notifications ("any new messages?") and, if you switch it on,
- * announce incoming chat messages out loud. Only keeps the latest few in memory.
+ * announce incoming chat messages out loud. Everything is also saved in [NotificationStore].
  */
 class JarvisNotificationListener : NotificationListenerService() {
 
@@ -53,6 +53,10 @@ class JarvisNotificationListener : NotificationListenerService() {
             ?.toString().orEmpty().trim()
         if (title.isEmpty() && text.isEmpty()) return
         val item = Item(sbn.key, appLabel(sbn.packageName), title, text, sbn.postTime)
+        // Kept on the phone so Voxa can tell you later what came in on each app.
+        if (n.category != Notification.CATEGORY_PROGRESS && n.category != Notification.CATEGORY_SERVICE) {
+            NotificationStore.add(this, NotificationStore.Item(sbn.packageName, item.app, title, text, sbn.postTime))
+        }
         synchronized(items) {
             items.removeAll { it.key == item.key }
             items.add(item)

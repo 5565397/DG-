@@ -7,7 +7,7 @@ package com.jarvis.assistant
  * text-to-speech voice — spoken aloud the two sound nearly the same.
  */
 object Lang {
-    enum class Line { YES, DIDNT_CATCH, GLITCH, VOICE_CHECK, VOICE_DENIED, MIC_FAIL, NO_BRAIN, CANT_DO, THINKING }
+    enum class Line { YES, DIDNT_CATCH, GLITCH, VOICE_CHECK, VOICE_DENIED, MIC_FAIL, NO_BRAIN, CANT_DO, THINKING, UNLOCK_FIRST }
 
     const val AUTO = "auto"
 
@@ -64,6 +64,7 @@ object Lang {
         Line.NO_BRAIN -> "Online AI is off, $sir. Turn on Groq in Settings to ask me anything."
         Line.CANT_DO -> "I'm not sure how to do that on this phone, $sir."
         Line.THINKING -> "Thinking…"
+        Line.UNLOCK_FIRST -> "Please unlock your phone first, $sir, then I'll do it."
     }
 
     private fun hinglish(line: Line, sir: String) = when (line) {
@@ -76,6 +77,7 @@ object Lang {
         Line.NO_BRAIN -> "Online AI band hai, $sir. Kuch bhi poochne ke liye Settings mein Groq on kar dijiye."
         Line.CANT_DO -> "Ye kaam is phone par kaise karun, mujhe pakka nahi pata, $sir."
         Line.THINKING -> "Soch rahi hoon…"
+        Line.UNLOCK_FIRST -> "Pehle phone unlock kar dijiye, $sir, phir main kar deti hoon."
     }
 
     private fun hindi(line: Line, sir: String) = when (line) {
@@ -88,6 +90,7 @@ object Lang {
         Line.NO_BRAIN -> "ऑनलाइन AI बंद है, $sir। कुछ भी पूछने के लिए सेटिंग्स में Groq चालू कर दीजिए।"
         Line.CANT_DO -> "यह काम इस फ़ोन पर कैसे करूँ, मुझे पक्का नहीं पता, $sir।"
         Line.THINKING -> "सोच रही हूँ…"
+        Line.UNLOCK_FIRST -> "पहले फ़ोन अनलॉक कर दीजिए, $sir, फिर मैं कर देती हूँ।"
     }
 
     private fun urdu(line: Line, sir: String) = when (line) {
@@ -100,5 +103,6 @@ object Lang {
         Line.NO_BRAIN -> "آن لائن اے آئی بند ہے، $sir۔ کچھ بھی پوچھنے کے لیے سیٹنگز میں Groq آن کر دیجیے۔"
         Line.CANT_DO -> "یہ کام اس فون پر کیسے کروں، مجھے پکا نہیں پتا، $sir۔"
         Line.THINKING -> "سوچ رہی ہوں…"
+        Line.UNLOCK_FIRST -> "پہلے فون ان لاک کر دیجیے، $sir، پھر میں کر دیتی ہوں۔"
     }
 }

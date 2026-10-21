@@ -33,6 +33,12 @@ import java.util.Locale
 /** The main screen: the orb, the whole conversation as a chat, and a message box. */
 class MainActivity : AppCompatActivity(), JarvisBus.Listener {
 
+    companion object {
+        /** The app is on screen, so the lock-screen window isn't needed. */
+        @Volatile var visible = false
+            private set
+    }
+
     private lateinit var prefs: Prefs
     private lateinit var orb: OrbView
     private lateinit var txtStatus: TextView
@@ -51,8 +57,7 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
 
     /** Number of chat messages currently drawn, to append only what's new. */
     private var shown = 0
-    private var lastRole: ChatStore.Role? = null
-    private var lastDay = ""
+    private lateinit var renderer: ChatRenderer
 
     /** A file picked with + and waiting to be sent. */
     private var pendingFile: FileAnalyzer.Attachment? = null
@@ -97,6 +102,7 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         chipWake = findViewById(R.id.chipWake)
         txtWake = findViewById(R.id.txtWake)
         wakeDot = findViewById(R.id.wakeDot)
+        renderer = ChatRenderer(this, chatList, txtPartial)
 
         val listen = View.OnClickListener {
             it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -158,12 +164,20 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         }
         val openSettings = View.OnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
         findViewById<ImageButton>(R.id.btnSettings).setOnClickListener(openSettings)
+        findViewById<ImageButton>(R.id.btnHistory).setOnClickListener { startActivity(Intent(this, HistoryActivity::class.java)) }
+        findViewById<ImageButton>(R.id.btnNewChat).setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            ChatStore.newSession(this)
+            AiBrain.forgetAll()
+            Toast.makeText(this, "New chat — the old one is saved in History", Toast.LENGTH_SHORT).show()
+        }
         setupBanner.setOnClickListener(openSettings)
     }
 
     override fun onResume() {
         super.onResume()
-        JarvisBus.listener = this
+        JarvisBus.register(this)
+        visible = true
         val state = if (JarvisService.isRunning) JarvisBus.state else JarvisBus.State.OFFLINE
         onState(state, if (JarvisService.isRunning) JarvisBus.status else "")
         renderChat()
@@ -173,7 +187,8 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
     }
 
     override fun onPause() {
-        JarvisBus.listener = null
+        JarvisBus.unregister(this)
+        visible = false
         super.onPause()
     }
 
@@ -214,8 +229,7 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
             if (v !== txtEmpty && v !== txtPartial) chatList.removeViewAt(i)
         }
         shown = 0
-        lastRole = null
-        lastDay = ""
+        renderer.reset()
         renderChat()
     }
 
@@ -231,125 +245,9 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         }
         txtEmpty.visibility = if (all.isEmpty()) View.VISIBLE else View.GONE
         if (all.isEmpty()) txtEmpty.text = greeting() + "\n" + hint()
-        for (i in shown until all.size) addBubble(all[i])
+        for (i in shown until all.size) renderer.add(all[i])
         shown = all.size
         scrollToEnd()
-    }
-
-    private fun addBubble(m: ChatStore.Message) {
-        val day = SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(m.time))
-        if (day != lastDay) {
-            lastDay = day
-            insert(note(day), topMargin = 18)
-            lastRole = null
-        }
-        when (m.role) {
-            ChatStore.Role.NOTE -> {
-                insert(note(m.text), topMargin = 8)
-                lastRole = ChatStore.Role.NOTE
-                return
-            }
-            ChatStore.Role.USER, ChatStore.Role.VOXA -> {}
-        }
-        val user = m.role == ChatStore.Role.USER
-        val sameSender = lastRole == m.role
-        if (!user && !sameSender) {
-            val label = TextView(this)
-            label.text = "VOXA"
-            label.letterSpacing = 0.25f
-            label.textSize = 10.5f
-            label.setTextColor(ContextCompat.getColor(this, R.color.accent))
-            label.setPadding(dp(6), 0, 0, 0)
-            insert(label, topMargin = 14)
-        }
-        if (m.filePath != null) {
-            addFileBubble(m, user, sameSender)
-            lastRole = m.role
-            return
-        }
-        val bubble = TextView(this)
-        bubble.text = m.text
-        bubble.textSize = 15.5f
-        bubble.setLineSpacing(dp(3).toFloat(), 1f)
-        bubble.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
-        bubble.setBackgroundResource(if (user) R.drawable.bubble_user else R.drawable.bubble_voxa)
-        bubble.setPadding(dp(16), dp(10), dp(16), dp(11))
-        bubble.maxWidth = (resources.displayMetrics.widthPixels * 0.80f).toInt()
-        bubble.textDirection = View.TEXT_DIRECTION_FIRST_STRONG
-        bubble.setOnLongClickListener {
-            getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Voxa", m.text))
-            Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
-            true
-        }
-        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        lp.gravity = if (user) Gravity.END else Gravity.START
-        lp.topMargin = dp(if (sameSender) 4 else if (user) 14 else 4)
-        // Keep the live-text bubble last.
-        chatList.addView(bubble, chatList.indexOfChild(txtPartial), lp)
-        lastRole = m.role
-    }
-
-    /** A message with a picture or file: the picture (or a file row) and the text under it. */
-    private fun addFileBubble(m: ChatStore.Message, user: Boolean, sameSender: Boolean) {
-        val box = LinearLayout(this)
-        box.orientation = LinearLayout.VERTICAL
-        box.setBackgroundResource(if (user) R.drawable.bubble_user else R.drawable.bubble_voxa)
-        box.setPadding(dp(6), dp(6), dp(6), dp(6))
-        val maxW = (resources.displayMetrics.widthPixels * 0.72f).toInt()
-        val kind = FileAnalyzer.kindOf(m.fileMime.orEmpty(), m.fileName.orEmpty())
-        val bmp = if (kind == FileAnalyzer.Kind.IMAGE && java.io.File(m.filePath!!).exists()) thumbnail(m.filePath, 700) else null
-        if (bmp != null) {
-            val img = ImageView(this)
-            img.setImageBitmap(bmp)
-            img.adjustViewBounds = true
-            img.scaleType = ImageView.ScaleType.FIT_CENTER
-            img.maxWidth = maxW
-            img.maxHeight = dp(320)
-            img.clipToOutline = true
-            img.setBackgroundResource(R.drawable.card)
-            box.addView(img, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        } else {
-            val row = TextView(this)
-            row.text = m.fileName ?: "File"
-            row.textSize = 14f
-            row.maxWidth = maxW
-            row.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
-            row.compoundDrawablePadding = dp(10)
-            val icon = ContextCompat.getDrawable(this, R.drawable.ic_file)?.mutate()
-            icon?.setTint(ContextCompat.getColor(this, R.color.accent))
-            row.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null)
-            row.setPadding(dp(10), dp(8), dp(12), dp(8))
-            box.addView(row)
-        }
-        if (m.text.isNotBlank()) {
-            val tv = TextView(this)
-            tv.text = m.text
-            tv.textSize = 15.5f
-            tv.maxWidth = maxW
-            tv.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
-            tv.setPadding(dp(10), dp(8), dp(10), dp(5))
-            tv.textDirection = View.TEXT_DIRECTION_FIRST_STRONG
-            box.addView(tv)
-        }
-        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        lp.gravity = if (user) Gravity.END else Gravity.START
-        lp.topMargin = dp(if (sameSender) 4 else 14)
-        chatList.addView(box, chatList.indexOfChild(txtPartial), lp)
-    }
-
-    private fun note(text: String): TextView {
-        val tv = TextView(this)
-        tv.text = text
-        tv.textSize = 11.5f
-        tv.gravity = Gravity.CENTER
-        tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
-        return tv
-    }
-
-    private fun insert(view: TextView, topMargin: Int) {
-        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        lp.topMargin = dp(topMargin)
-        chatList.addView(view, chatList.indexOfChild(txtPartial), lp)
     }
 
     private fun scrollToEnd() {
@@ -411,7 +309,7 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         findViewById<TextView>(R.id.attachName).text = file.name
         findViewById<TextView>(R.id.attachInfo).text = "${kindLabel(file.kind)} · ${sizeLabel(file.size)} · add a question or just send"
         val thumb = findViewById<ImageView>(R.id.attachThumb)
-        val bmp = if (file.kind == FileAnalyzer.Kind.IMAGE) thumbnail(file.path, 200) else null
+        val bmp = if (file.kind == FileAnalyzer.Kind.IMAGE) ChatRenderer.thumbnail(file.path, 200) else null
         if (bmp != null) {
             thumb.imageTintList = null
             thumb.setPadding(0, 0, 0, 0)
@@ -439,15 +337,6 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         bytes >= 1024 * 1024 -> String.format(Locale.US, "%.1f MB", bytes / 1048576.0)
         bytes >= 1024 -> "${bytes / 1024} KB"
         else -> "$bytes B"
-    }
-
-    private fun thumbnail(path: String, maxPx: Int): android.graphics.Bitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(path, bounds)
-        if (bounds.outWidth <= 0) return null
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= maxPx && bounds.outHeight / (sample * 2) >= maxPx) sample *= 2
-        return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
     private fun isWakeOn() = JarvisService.isRunning && JarvisService.wakeMode

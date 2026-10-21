@@ -39,6 +39,28 @@
             android:textSize="10.5sp" />
 
         <ImageButton
+            android:id="@+id/btnNewChat"
+            android:layout_width="44dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="New chat"
+            android:padding="12dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_new_chat"
+            app:tint="@color/text_secondary" />
+
+        <ImageButton
+            android:id="@+id/btnHistory"
+            android:layout_width="44dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Chat history"
+            android:padding="12dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_history"
+            app:tint="@color/text_secondary" />
+
+        <ImageButton
             android:id="@+id/btnSettings"
             android:layout_width="48dp"
             android:layout_height="48dp"

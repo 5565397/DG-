@@ -240,6 +240,10 @@ class SettingsActivity : AppCompatActivity() {
                 rebuild()
             }
         }
+        switchRow(card, "Voxa window on the lock screen", "Say \"Voxa\" and her window opens over any app or the lock screen. Personal things wait for you to unlock.", prefs.lockWindow) { on ->
+            prefs.lockWindow = on
+            true
+        }
         switchRow(card, "Announce new messages", "Voxa reads incoming WhatsApp, SMS and chat messages aloud.", prefs.announceMessages) { on ->
             prefs.announceMessages = on
             if (on && !Setup.isDone(this, Setup.Step.NOTIFICATIONS)) {
@@ -252,12 +256,15 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun buildMemory() {
         val card = section("MEMORY & CHAT")
-        val chatCount = ChatStore.all(this).size
-        row(card, "Clear chat history", if (chatCount == 0) "The chat is empty." else "$chatCount messages on this phone.") {
+        val chatCount = ChatStore.sessions(this).size
+        row(card, "Chat history", if (chatCount == 0) "No saved chats yet." else "$chatCount conversations saved on this phone.") {
+            startActivity(Intent(this, HistoryActivity::class.java))
+        }
+        row(card, "Delete all chat history", "Removes every saved conversation and attached file from this phone.") {
             MaterialAlertDialogBuilder(this)
-                .setTitle("Clear the chat?")
-                .setMessage("This removes the conversation from this phone. Voxa also starts a fresh AI conversation.")
-                .setPositiveButton("Clear") { _, _ ->
+                .setTitle("Delete all chats?")
+                .setMessage("Every saved conversation and attached file is removed from this phone. Voxa also starts a fresh AI conversation.")
+                .setPositiveButton("Delete") { _, _ ->
                     ChatStore.clear(this)
                     AiBrain.forgetAll()
                     rebuild()
@@ -296,7 +303,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Voxa 3.7"
+        tv.text = "Voxa 4.0"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER

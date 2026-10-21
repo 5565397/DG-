@@ -44,7 +44,18 @@ object Hindustani {
     private val home = listOf("होम", "ہوم", "home")
     private val back = listOf("वापस", "पीछे", "واپس", "پیچھے", "wapas", "wapis", "peeche")
     private val go = listOf("जाओ", "चलो", "جاؤ", "چلو", "jao", "chalo")
-    private val sleep = listOf("सो जाओ", "चुप हो जाओ", "बंद हो जाओ", "سو جاؤ", "خاموش ہو جاؤ", "بند ہو جاؤ", "so jao", "chup ho jao", "band ho jao")
+    private val sleep = listOf(
+        "सो जाओ", "चुप हो जाओ", "बंद हो जाओ", "आराम करो", "बस करो", "سو جاؤ", "سو جاو", "خاموش ہو جاؤ", "بند ہو جاؤ", "آرام کرو", "بس کرو",
+        "so jao", "so jaao", "soja", "so ja", "chup ho jao", "band ho jao", "aram karo", "araam karo", "bas karo"
+    )
+    /** Said on their own: switch Voxa off completely. */
+    private val turnOff = setOf("बंद करो", "बंद कर दो", "ऑफ करो", "ऑफ कर दो", "بند کرو", "بند کر دو", "آف کرو", "آف کر دو", "band karo", "band kar do", "off karo", "off kar do")
+    private val emails = listOf("ای میل", "ای میلز", "ईमेल", "जीमेल", "جی میل", "email", "emails", "mail", "mails", "gmail")
+    private val updates = listOf("اپڈیٹ", "اپڈیٹس", "اپ ڈیٹ", "अपडेट", "अपडेट्स", "update", "updates")
+    private val cameIn = listOf("क्या आया", "क्या आए", "क्या आई", "کیا آیا", "کیا آئے", "کیا آئی", "kya aaya", "kya aya", "kya aaye", "kya aye", "kya aayi", "kya ayi")
+    private val summaryWords = listOf("सारांश", "खुलासा", "خلاصہ", "سمری", "समरी", "summary", "khulasa", "saransh")
+    private val scheduleWords = listOf("कैलेंडर", "शेड्यूल", "मीटिंग", "मीटिंग्स", "کیلنڈر", "شیڈول", "میٹنگ", "میٹنگز", "calendar", "schedule", "meeting", "meetings")
+    private val tomorrow = listOf("कल", "کل", "kal")
     private val hello = listOf("नमस्ते", "नमस्कार", "हेलो", "हैलो", "सलाम", "अस्सलाम", "السلام", "سلام", "ہیلو", "namaste", "salam", "assalam", "hello")
     private val goodMorning = listOf("सुप्रभात", "गुड मॉर्निंग", "صبح بخیر", "گڈ مارننگ", "subah bakhair", "good morning")
     private val whoAreYou = listOf("कौन हो", "कौन हैं", "تم کون ہو", "آپ کون ہیں", "کون ہو", "kaun ho", "kon ho")
@@ -257,6 +268,7 @@ object Hindustani {
 
         // ----- Fixed commands -----
         if (has(newChat)) return "new conversation"
+        if (t in turnOff) return "turn off"
         if (has(sleep)) return "stop listening"
         if (has(goodMorning)) return "good morning"
         if (has(whoAreYou)) return "who are you"
@@ -288,6 +300,14 @@ object Hindustani {
         if (has(scroll)) return if (has(listOf("ऊपर", "اوپر", "upar"))) "scroll up" else "scroll down"
         if (has(home) && (has(go) || words() <= 2)) return "go home"
         if (has(back) && has(go)) return "go back"
+        // "Gmail mein kya aaya", "WhatsApp ke messages sunao", "aaj ki notifications ka khulasa"
+        val newsAsked = has(notifications) || has(messages) || has(emails) || has(updates)
+        if (has(summaryWords) && (newsAsked || has(cameIn))) return "summarize all my notifications from $t"
+        if (NotificationStore.packagesFor(t) != null && (has(cameIn) || (newsAsked && (has(readVerbs) || has(what))))) return "check notifications from $t"
+        if (has(cameIn) && (has(today) || words() <= 3)) return "summarize all my notifications from $t"
+        if (has(scheduleWords) && (has(readVerbs) || has(what) || has(today) || has(tomorrow))) {
+            return if (has(tomorrow)) "what's on my calendar tomorrow" else "what's on my calendar today"
+        }
         if ((has(notifications) || has(messages)) && has(readVerbs)) return "read my notifications"
         if (has(notifications)) return "open notifications"
         if (has(screenWords) && has(what)) return "what's on my screen"

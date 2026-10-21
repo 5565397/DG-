@@ -32,6 +32,16 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("reply_hinglish", true)
         set(v) = sp.edit().putBoolean("reply_hinglish", v).apply()
 
+    /** The wake word was left on; start it again after a reboot or restart. */
+    var wakeEnabled: Boolean
+        get() = sp.getBoolean("wake_enabled", false)
+        set(v) = sp.edit().putBoolean("wake_enabled", v).apply()
+
+    /** Show Voxa's own window (also on the lock screen) when you say "Voxa". */
+    var lockWindow: Boolean
+        get() = sp.getBoolean("lock_window", true)
+        set(v) = sp.edit().putBoolean("lock_window", v).apply()
+
     var countryCode: String
         get() = sp.getString("country_code", "") ?: ""
         set(v) = sp.edit().putString("country_code", v).apply()

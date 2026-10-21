@@ -41,7 +41,7 @@ import java.util.Locale
  */
 class CommandProcessor(private val ctx: Context) {
 
-    enum class Control { NONE, STOP_LISTENING, RELOCK, NEW_CHAT }
+    enum class Control { NONE, STOP_LISTENING, TURN_OFF, RELOCK, NEW_CHAT }
 
     data class Result(
         val reply: String,
@@ -51,8 +51,24 @@ class CommandProcessor(private val ctx: Context) {
         /** When set, the service asks the AI brain this question and speaks its answer. */
         val ask: String? = null,
         /** Send a screenshot of the current screen along with [ask]. */
-        val withScreen: Boolean = false
+        val withScreen: Boolean = false,
+        /** The AI should answer [ask] in full for the chat (and speak a short version). */
+        val detailed: Boolean = false,
+        /** A fuller version of [reply] for the chat. */
+        val display: String? = null
     )
+
+    /**
+     * Whether [input] touches personal data or opens apps, so it must wait for the phone to be
+     * unlocked when said on the lock screen. Time, torch, volume, timers and questions don't.
+     */
+    fun needsUnlock(input: String): Boolean = when (CommandParser.parse(input, nonEnglishMode = Lang.hindustaniInput(prefs))) {
+        Action.Empty, Action.StopListening, Action.TurnOff, Action.Relock, Action.NewChat, Action.Greet, Action.WhoAreYou,
+        Action.Thanks, Action.Help, Action.Time, Action.Date, Action.Battery -> false
+        is Action.Torch, is Action.VolumeStep, is Action.VolumeSet, is Action.Mute, is Action.RingerMode, is Action.MediaKey,
+        is Action.Timer, is Action.Alarm, is Action.Question, is Action.Ask, is Action.Unknown -> false
+        else -> true
+    }
 
     private val prefs = Prefs(ctx)
     private val main = Handler(Looper.getMainLooper())
@@ -116,9 +132,25 @@ class CommandProcessor(private val ctx: Context) {
     private fun execute(action: Action): Result = when (action) {
         Action.Empty -> Result(Lang.get(prefs, Lang.Line.YES))
         Action.StopListening -> Result(
-            L("Going offline. Call me when you need me, $sir.", "मैं आराम करता हूँ। ज़रूरत हो तो बुला लीजिए, $sirHi।", "میں آرام کرتا ہوں۔ ضرورت ہو تو بلا لیجیے، $sirUr۔", "Main offline ja rahi hoon. Zaroorat ho to bula lijiye, $sir."),
+            if (JarvisService.wakeMode) L(
+                "Going to sleep. Just say \"Voxa\" when you need me, $sir.",
+                "मैं सो रही हूँ। ज़रूरत हो तो \"वोक्सा\" बोलिए, $sirHi।",
+                "میں سو رہی ہوں۔ ضرورت ہو تو \"ووکسا\" بولیے، $sirUr۔",
+                "Theek hai, so rahi hoon. Zaroorat ho to \"Voxa\" boliye, $sir."
+            ) else L("Going offline. Call me when you need me, $sir.", "मैं आराम करता हूँ। ज़रूरत हो तो बुला लीजिए, $sirHi।", "میں آرام کرتا ہوں۔ ضرورت ہو تو بلا لیجیے، $sirUr۔", "Main offline ja rahi hoon. Zaroorat ho to bula lijiye, $sir."),
             Control.STOP_LISTENING
         )
+        Action.TurnOff -> Result(
+            L(
+                "Switching off. Turn me on again from the app, $sir.",
+                "मैं बंद हो रही हूँ। ऐप से फिर चालू कर लीजिए।",
+                "میں بند ہو رہی ہوں۔ ایپ سے دوبارہ آن کر لیجیے۔",
+                "Main band ho rahi hoon. App se dobara on kar lijiye, $sir."
+            ),
+            Control.TURN_OFF
+        )
+        is Action.AppNews -> appNews(action.app, action.summary)
+        is Action.Schedule -> schedule(action.dayOffset)
         Action.Relock -> Result(L("Voice lock engaged, $sir.", "वॉइस लॉक चालू, $sirHi।", "وائس لاک آن، $sirUr۔", "Voice lock on ho gaya, $sir."), Control.RELOCK)
         Action.NewChat -> Result(L("Fresh start, $sir. What's on your mind?", "नई शुरुआत, $sirHi। बताइए?", "نئی شروعات، $sirUr۔ بتائیے؟", "Nayi shuruaat, $sir. Batayiye kya baat hai?"), Control.NEW_CHAT)
         Action.Greet -> Result(L("${greeting()}, $sir. At your service.", "${greeting()}, $sirHi। हुक्म कीजिए।", "${greeting()}، $sirUr۔ حکم کیجیے۔", "${greeting()}, $sir. Hukam kijiye."))
@@ -327,28 +359,49 @@ class CommandProcessor(private val ctx: Context) {
             "${greeting()}، $sirUr۔ ابھی $time بجے ہیں، آج ${spokenDate()} ہے۔ بیٹری $level فیصد ہے۔",
             "${greeting()}, $sir. Abhi $time baje hain, aaj ${spokenDate()} hai. Battery $level percent hai."
         )
-        if (!hasBrain) return Result(local)
+        // Today's calendar and what came in overnight, when Voxa has access to them.
+        val events = if (granted(Manifest.permission.READ_CALENDAR)) try { calendarEvents(0) } catch (e: Exception) { emptyList() } else emptyList()
+        val unread = if (hasNotificationAccess()) NotificationStore.query(ctx, sinceMs = System.currentTimeMillis() - 12 * 3600_000L, unreadOnly = true, limit = 40) else emptyList()
+        val extra = buildString {
+            if (events.isNotEmpty()) append(" ").append(L(
+                "You have ${events.size} event${if (events.size == 1) "" else "s"} today, starting with ${events.first().second}.",
+                "आज ${events.size} इवेंट हैं, पहला: ${events.first().second}।",
+                "آج ${events.size} ایونٹ ہیں، پہلا: ${events.first().second}۔",
+                "Aaj ${events.size} event hain, pehla: ${events.first().second}."
+            ))
+            if (unread.isNotEmpty()) append(" ").append(L(
+                "${unread.size} unread notifications.",
+                "${unread.size} नए नोटिफिकेशन हैं।",
+                "${unread.size} نئے نوٹیفکیشن ہیں۔",
+                "${unread.size} nayi notifications hain."
+            ))
+        }
+        if (!hasBrain) return Result(local + extra)
         val where = prefs.city.ifBlank { "my area" }
         return Result(
-            local,
+            local + extra,
             ask = "Give me a quick spoken briefing for $where: today's weather in one sentence, then the two most important news headlines in one sentence each. No greeting, I've already been greeted."
         )
     }
 
+    private fun noNotificationAccess(): Result {
+        launch(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        return Result(L(
+            "I need notification access to read your messages, $sir. Turn on Voxa on the page I've opened.",
+            "मैसेज पढ़ने के लिए नोटिफिकेशन की इजाज़त चाहिए। खुले हुए पेज पर वोक्सा चालू कर दीजिए।",
+            "میسج پڑھنے کے لیے نوٹیفکیشن کی اجازت چاہیے۔ کھلے ہوئے صفحے پر ووکسا آن کر دیجیے۔",
+            "Messages parhne ke liye notification access chahiye, $sir. Jo page khola hai us par Voxa on kar dijiye."
+        ))
+    }
+
+    private fun hasNotificationAccess() =
+        androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName)
+
     private fun readNotifications(): Result {
-        val listener = JarvisNotificationListener.instance
-        if (listener == null) {
-            launch(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-            return Result(L(
-                "I need notification access to read your messages, $sir. Turn on Voxa on the page I've opened.",
-                "मैसेज पढ़ने के लिए नोटिफिकेशन की इजाज़त चाहिए। खुले हुए पेज पर वोक्सा चालू कर दीजिए।",
-                "میسج پڑھنے کے لیے نوٹیفکیشن کی اجازت چاہیے۔ کھلے ہوئے صفحے پر ووکسا آن کر دیجیے۔",
-                "Messages parhne ke liye notification access chahiye, $sir. Jo page khola hai us par Voxa on kar dijiye."
-            ))
-        }
-        val items = listener.recent(limit = 6)
+        if (!hasNotificationAccess()) return noNotificationAccess()
+        val items = NotificationStore.query(ctx, sinceMs = System.currentTimeMillis() - DAY_MS, unreadOnly = true, limit = 6)
         if (items.isEmpty()) return Result(L("No new notifications, $sir.", "कोई नया नोटिफिकेशन नहीं है।", "کوئی نیا نوٹیفکیشن نہیں ہے۔", "Koi nayi notification nahi hai, $sir."))
-        listener.markAllRead()
+        NotificationStore.markRead(ctx, items)
         val spoken = items.joinToString(" ") { n ->
             val body = n.text.take(140)
             if (n.title.isNotBlank()) L("${n.app}, from ${n.title}: $body.", "${n.app}, ${n.title} की तरफ़ से: $body।", "${n.app}، ${n.title} کی طرف سے: $body۔", "${n.app} par ${n.title} ka message: $body.")
@@ -361,6 +414,104 @@ class CommandProcessor(private val ctx: Context) {
             "آپ کے $count نئے نوٹیفکیشن ہیں۔ $spoken",
             "Aapki $count nayi notification${if (count == 1) "" else "s"} hain. $spoken"
         ))
+    }
+
+    /** What came in on one app (or all apps) in the last day — summarised by the AI, or read out offline. */
+    private fun appNews(spoken: String?, summary: Boolean): Result {
+        if (!hasNotificationAccess()) return noNotificationAccess()
+        val pkgs = spoken?.let { NotificationStore.packagesFor(it) }
+        val items = NotificationStore.query(ctx, pkgs, sinceMs = System.currentTimeMillis() - DAY_MS, limit = 80)
+        val name = spoken?.let { NotificationStore.appNameFor(it) } ?: items.firstOrNull()?.app.takeIf { pkgs != null }
+        if (items.isEmpty()) {
+            return Result(
+                if (name != null) L(
+                    "Nothing new on $name in the last day, $sir.",
+                    "पिछले एक दिन में $name पर कुछ नया नहीं आया।",
+                    "پچھلے ایک دن میں $name پر کچھ نیا نہیں آیا۔",
+                    "Pichle ek din mein $name par kuch naya nahi aaya, $sir."
+                ) else L("No notifications in the last day, $sir.", "पिछले एक दिन में कोई नोटिफिकेशन नहीं आया।", "پچھلے ایک دن میں کوئی نوٹیفکیشن نہیں آیا۔", "Pichle ek din mein koi notification nahi aayi, $sir.")
+            )
+        }
+        NotificationStore.markRead(ctx, items)
+        val list = NotificationStore.format(items)
+        if (hasBrain) {
+            val from = if (name != null) " from $name" else ""
+            return Result(
+                L("Here's what came in$from.", "यह आया है$from।", "یہ آیا ہے$from۔", "Ye aaya hai$from."),
+                ask = "These are my phone's notifications$from in the last 24 hours, newest first:\n$list\n\n" +
+                    (if (summary || pkgs == null) "Give me a short summary grouped by app and person: what came in, what looks important, and anything I should reply to first."
+                    else "Tell me what came in: who sent what, the important ones first, and anything I should reply to."),
+                detailed = true
+            )
+        }
+        // Offline: read the newest few, show the whole list in the chat.
+        val newest = items.take(5)
+        val spokenList = newest.joinToString(" ") { n ->
+            (if (n.title.isNotBlank()) "${n.title}: " else "") + n.text.take(120) + "."
+        }
+        val count = items.size
+        val head = if (name != null) L(
+            "$count notifications from $name. The latest: ",
+            "$name पर $count नोटिफिकेशन। ताज़ा वाले: ",
+            "$name پر $count نوٹیفکیشن۔ تازہ والے: ",
+            "$name par $count notifications aayi hain. Taaza wali: "
+        ) else L("$count notifications today. The latest: ", "आज $count नोटिफिकेशन। ताज़ा वाले: ", "آج $count نوٹیفکیشن۔ تازہ والے: ", "Aaj $count notifications aayi hain. Taaza wali: ")
+        return Result(head + spokenList, display = head.trim() + "\n\n" + NotificationStore.format(items.take(25), 4000))
+    }
+
+    // ----- Calendar -----
+    private fun schedule(dayOffset: Int): Result {
+        if (!granted(Manifest.permission.READ_CALENDAR)) {
+            return Result(L(
+                "I need calendar permission first, $sir. Allow it in Settings, under Setup.",
+                "पहले कैलेंडर की इजाज़त चाहिए। सेटिंग्स में सेटअप से दे दीजिए।",
+                "پہلے کیلنڈر کی اجازت چاہیے۔ سیٹنگز میں سیٹ اپ سے دے دیجیے۔",
+                "Pehle calendar ki permission chahiye, $sir. Settings mein Setup se allow kar dijiye."
+            ))
+        }
+        val events = calendarEvents(dayOffset)
+        val dayEn = if (dayOffset == 0) "today" else "tomorrow"
+        val dayRm = if (dayOffset == 0) "Aaj" else "Kal"
+        if (events.isEmpty()) {
+            return Result(L(
+                "Nothing on your calendar $dayEn, $sir.",
+                "${if (dayOffset == 0) "आज" else "कल"} आपके कैलेंडर में कुछ नहीं है।",
+                "${if (dayOffset == 0) "آج" else "کل"} آپ کے کیلنڈر میں کچھ نہیں ہے۔",
+                "$dayRm aapke calendar mein kuch nahi hai, $sir."
+            ))
+        }
+        val lines = events.joinToString(". ") { (time, title) -> if (time == null) title else "$time, $title" }
+        val n = events.size
+        return Result(L(
+            "You have $n event${if (n == 1) "" else "s"} $dayEn. $lines.",
+            "${if (dayOffset == 0) "आज" else "कल"} $n इवेंट हैं। $lines।",
+            "${if (dayOffset == 0) "آج" else "کل"} $n ایونٹ ہیں۔ $lines۔",
+            "$dayRm aapke $n event${if (n == 1) "" else "s"} hain. $lines."
+        ))
+    }
+
+    /** (spoken start time or null for all-day, title) for each event on the day. */
+    private fun calendarEvents(dayOffset: Int): List<Pair<String?, String>> {
+        val start = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, dayOffset)
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val uri = android.provider.CalendarContract.Instances.CONTENT_URI.buildUpon()
+            .appendPath(start.toString()).appendPath((start + DAY_MS).toString()).build()
+        val out = ArrayList<Pair<String?, String>>()
+        ctx.contentResolver.query(
+            uri,
+            arrayOf(android.provider.CalendarContract.Instances.TITLE, android.provider.CalendarContract.Instances.BEGIN, android.provider.CalendarContract.Instances.ALL_DAY),
+            null, null, "${android.provider.CalendarContract.Instances.BEGIN} ASC"
+        )?.use { cur ->
+            while (cur.moveToNext() && out.size < 12) {
+                val title = cur.getString(0)?.trim().orEmpty().ifEmpty { "Untitled event" }
+                val allDay = cur.getInt(2) == 1
+                val c = Calendar.getInstance().apply { timeInMillis = cur.getLong(1) }
+                out.add((if (allDay) null else spokenTime(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))) to title)
+            }
+        }
+        return out
     }
 
     // ----- Flashlight -----
@@ -850,6 +1001,7 @@ class CommandProcessor(private val ctx: Context) {
     }
 
     companion object {
+        private const val DAY_MS = 24 * 3600_000L
         private val DIAL_CODES = mapOf(
             "pk" to "92", "in" to "91", "bd" to "880", "ae" to "971", "sa" to "966", "qa" to "974", "kw" to "965",
             "om" to "968", "bh" to "973", "us" to "1", "ca" to "1", "gb" to "44", "uk" to "44", "au" to "61", "nz" to "64",

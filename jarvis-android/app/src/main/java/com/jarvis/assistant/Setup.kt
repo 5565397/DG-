@@ -17,10 +17,10 @@ import androidx.core.content.ContextCompat
 object Setup {
 
     enum class Step(val title: String, val subtitle: String) {
-        PERMISSIONS("Microphone, contacts, calls & SMS", "So Voxa can hear you and reach people"),
+        PERMISSIONS("Microphone, contacts, calls, SMS & calendar", "So Voxa can hear you, reach people and read your schedule"),
         PHONE_CONTROL("Phone control", "Tap, scroll, type, screenshots, screen vision"),
         NOTIFICATIONS("Notification access", "Read and announce your messages"),
-        OVERLAY("Display over other apps", "Open apps while Voxa runs in the background"),
+        OVERLAY("Display over other apps", "Voxa's window over apps and the lock screen"),
         BRIGHTNESS("Modify system settings", "Brightness control"),
         BACKGROUND("Run in the background", "Keeps the wake word alive")
     }
@@ -30,7 +30,8 @@ object Setup {
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.CALL_PHONE,
-            Manifest.permission.SEND_SMS
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_CALENDAR
         )
         if (Build.VERSION.SDK_INT >= 33) list.add(Manifest.permission.POST_NOTIFICATIONS)
         return list.toTypedArray()

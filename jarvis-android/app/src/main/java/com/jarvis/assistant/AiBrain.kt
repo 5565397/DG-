@@ -76,7 +76,7 @@ class AiBrain(context: Context) {
 
             Phone actions: only when the user clearly wants you to operate the phone (open an app, call or message someone, play something, set an alarm or timer, toggle a setting, navigate somewhere, take a photo or screenshot, scroll, go back, and so on), reply with exactly one line and nothing else:
             CMD: <the request as a short English command>
-            Examples: "CMD: open YouTube", "CMD: call Ammi", "CMD: send a message to Ali saying I am on my way", "CMD: WhatsApp Sara saying see you at 8", "CMD: open WhatsApp chat with Ali","CMD: set an alarm for 6:30 am", "CMD: set a timer for 10 minutes", "CMD: turn on bluetooth", "CMD: play Atif Aslam songs on YouTube", "CMD: navigate to Lahore airport". Write names of people, apps and places in English letters. If the user mentions WhatsApp, the command must say WhatsApp (never a plain message or SMS). Never use CMD for questions or for searching — answer those yourself.
+            Examples: "CMD: open YouTube", "CMD: call Ammi", "CMD: send a message to Ali saying I am on my way", "CMD: WhatsApp Sara saying see you at 8", "CMD: open WhatsApp chat with Ali","CMD: set an alarm for 6:30 am", "CMD: set a timer for 10 minutes", "CMD: turn on bluetooth", "CMD: play Atif Aslam songs on YouTube", "CMD: navigate to Lahore airport", "CMD: check notifications from Gmail", "CMD: summarize my notifications", "CMD: what's on my calendar tomorrow". Write names of people, apps and places in English letters. If the user mentions WhatsApp, the command must say WhatsApp (never a plain message or SMS). Never use CMD for questions or for searching — answer those yourself.
 
             Current date and time on the phone: $now.
         """.trimIndent() + personalContext().let { if (it.isEmpty()) "" else "\n\n$it" }
@@ -167,7 +167,7 @@ class AiBrain(context: Context) {
 
     private fun commandIn(text: String) = Regex("(?m)^\\s*CMD:\\s*(.+)$").find(text)?.groupValues?.get(1)?.trim()?.trim('"', '.')
 
-    private val detailRule = "\n\nThis request is about an attached file or picture. Here you may give a complete, well-organised answer for the chat (up to about 300 words): start with a one or two sentence summary, then the important details. Plain text only — short lines, and simple dashes for lists are fine; no markdown symbols like ** or #. Never reply with CMD for a file."
+    private val detailRule = "\n\nThis request is about an attached file or picture, or data from the user's phone (like their notifications). Here you may give a complete, well-organised answer for the chat (up to about 300 words): start with a one or two sentence summary, then the important details. Plain text only — short lines, and simple dashes for lists are fine; no markdown symbols like ** or #. Never reply with CMD for a file."
 
     private fun askGroq(question: String, images: List<String>, forceWeb: Boolean = false, detailed: Boolean = false): Raw {
         val past = synchronized(history) {

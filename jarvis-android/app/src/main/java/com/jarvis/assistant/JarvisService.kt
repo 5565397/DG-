@@ -3,6 +3,7 @@ package com.jarvis.assistant
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
@@ -34,6 +35,10 @@ class JarvisService : Service(), RecognitionListener {
         const val ACTION_RUN_TEXT = "com.jarvis.assistant.RUN_TEXT"
         const val ACTION_STOP = "com.jarvis.assistant.STOP"
         const val ACTION_RUN_FILE = "com.jarvis.assistant.RUN_FILE"
+        /** End the conversation and go back to waiting for "Voxa". */
+        const val ACTION_SLEEP = "com.jarvis.assistant.SLEEP"
+        /** Run a command that was waiting for the phone to be unlocked. */
+        const val ACTION_RUN_UNLOCKED = "com.jarvis.assistant.RUN_UNLOCKED"
         const val EXTRA_TEXT = "text"
         const val EXTRA_FILE_PATH = "file_path"
         const val EXTRA_FILE_NAME = "file_name"
@@ -48,6 +53,9 @@ class JarvisService : Service(), RecognitionListener {
         /** After speech ends, wait this long for the final text before using the live text. */
         private const val END_OF_SPEECH_GRACE_MS = 3_000L
         private const val MIC_RECHECK_MS = 2_500L
+        /** After "Voxa", keep listening for more commands without the wake word for this long. */
+        private const val ACTIVE_MS = 60_000L
+        private const val WAKE_NOTIF_ID = 8
 
         @Volatile var isRunning = false
             private set
@@ -56,6 +64,9 @@ class JarvisService : Service(), RecognitionListener {
         @Volatile private var unlockedUntil = 0L
 
         fun isUnlocked() = System.currentTimeMillis() < unlockedUntil
+
+        /** A command said on the lock screen, waiting for the phone to be unlocked. */
+        @Volatile var pendingUnlock: String? = null
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -86,6 +97,8 @@ class JarvisService : Service(), RecognitionListener {
     /** The user's latest words, so AI-derived commands keep details like "WhatsApp". */
     private var lastUserText = ""
     private var detectedTag: String? = null
+    /** Woken with "Voxa": until this time, commands don't need the wake word. */
+    private var activeUntil = 0L
 
     private val watchdog = Runnable { onRecognizerStuck() }
     private val endOfSpeech = Runnable { onEndOfSpeechTimeout() }
@@ -123,17 +136,24 @@ class JarvisService : Service(), RecognitionListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             wakeMode = false
+            prefs.wakeEnabled = false
             awaitingCommand = false
+            goToSleep()
             stopListening()
             stopSelf()
             return START_NOT_STICKY
         }
+        // Restarted by Android after being killed: pick the wake word up again if it was on.
+        val action = intent?.action ?: if (prefs.wakeEnabled) ACTION_START_WAKE else null
         if (!goForeground()) {
+            if (action == ACTION_START_WAKE) postWakeUpNotification()
             stopSelf()
             return START_NOT_STICKY
         }
-        when (intent?.action) {
+        when (action) {
             ACTION_START_WAKE -> {
+                prefs.wakeEnabled = true
+                getSystemService(NotificationManager::class.java).cancel(WAKE_NOTIF_ID)
                 wakeMode = true
                 awaitingCommand = false
                 micPaused = false
@@ -141,7 +161,7 @@ class JarvisService : Service(), RecognitionListener {
             }
             ACTION_LISTEN_ONCE -> onOrbTapped()
             ACTION_RUN_TEXT -> {
-                val text = intent.getStringExtra(EXTRA_TEXT).orEmpty().trim()
+                val text = intent?.getStringExtra(EXTRA_TEXT).orEmpty().trim()
                 if (text.isNotBlank()) {
                     interrupt()
                     stopListening()
@@ -151,7 +171,7 @@ class JarvisService : Service(), RecognitionListener {
                 }
             }
             ACTION_RUN_FILE -> {
-                val path = intent.getStringExtra(EXTRA_FILE_PATH)
+                val path = intent?.getStringExtra(EXTRA_FILE_PATH)
                 if (path != null) {
                     interrupt()
                     stopListening()
@@ -159,14 +179,32 @@ class JarvisService : Service(), RecognitionListener {
                     quietFollowUp = false
                     val file = java.io.File(path)
                     analyzeFile(
-                        FileAnalyzer.Attachment(path, intent.getStringExtra(EXTRA_FILE_NAME) ?: file.name, intent.getStringExtra(EXTRA_FILE_MIME) ?: "", file.length()),
-                        intent.getStringExtra(EXTRA_TEXT).orEmpty().trim()
+                        FileAnalyzer.Attachment(path, intent?.getStringExtra(EXTRA_FILE_NAME) ?: file.name, intent?.getStringExtra(EXTRA_FILE_MIME) ?: "", file.length()),
+                        intent?.getStringExtra(EXTRA_TEXT).orEmpty().trim()
                     )
+                }
+            }
+            ACTION_SLEEP -> {
+                interrupt()
+                stopListening()
+                goToSleep()
+                resume()
+            }
+            ACTION_RUN_UNLOCKED -> {
+                val text = intent?.getStringExtra(EXTRA_TEXT).orEmpty().trim()
+                pendingUnlock = null
+                if (text.isNotBlank()) {
+                    interrupt()
+                    stopListening()
+                    awaitingCommand = false
+                    quietFollowUp = false
+                    ChatStore.add(this, ChatStore.Role.NOTE, "Phone unlocked")
+                    runCommand(text)
                 }
             }
             else -> if (!wakeMode && !busy && !listening) stopSelf()
         }
-        return START_NOT_STICKY
+        return if (wakeMode) START_STICKY else START_NOT_STICKY
     }
 
     override fun onDestroy() {
@@ -383,6 +421,11 @@ class JarvisService : Service(), RecognitionListener {
 
     /** Continue whatever mode we're in after speaking / acting. */
     private fun resume() {
+        // Still in a conversation started with "Voxa": listen for the next command, no wake word needed.
+        if (wakeMode && !awaitingCommand && isActive() && !lastInputTyped) {
+            awaitingCommand = true
+            quietFollowUp = true
+        }
         if (awaitingCommand || wakeMode) {
             startListening()
         } else {
@@ -441,6 +484,8 @@ class JarvisService : Service(), RecognitionListener {
         if (awaitingCommand && quietFollowUp) {
             awaitingCommand = false
             quietFollowUp = false
+            // Nobody spoke: the conversation is over, back to waiting for "Voxa".
+            goToSleep()
             resume()
             return
         }
@@ -495,6 +540,7 @@ class JarvisService : Service(), RecognitionListener {
         }
         for (candidate in heard) {
             val command = WakeWord.extract(candidate) ?: continue
+            activate()
             if (command.isBlank()) {
                 awaitingCommand = true
                 say(Lang.get(prefs, Lang.Line.YES), log = false)
@@ -511,6 +557,7 @@ class JarvisService : Service(), RecognitionListener {
 
     private fun handleInput(text: String, typed: Boolean) {
         turn++
+        if (!typed && isActive()) activeUntil = System.currentTimeMillis() + ACTIVE_MS
         lastInputTyped = typed
         lastUserText = text
         val command = WakeWord.strip(text)
@@ -586,23 +633,97 @@ class JarvisService : Service(), RecognitionListener {
     }
 
     private fun execute(command: String) {
+        // On the lock screen, anything personal waits until the phone is unlocked.
+        if (lockedNow() && processor.needsUnlock(command)) {
+            askUnlock(command)
+            return
+        }
+        runCommand(command)
+    }
+
+    private fun runCommand(command: String) {
         JarvisBus.status(command)
-        val result = processor.handle(command)
+        val result = processor.handle(command, context = lastUserText)
         applyControl(result)
         val question = result.ask
         when {
-            question == null -> say(result.reply, result.after)
+            question == null -> say(result.reply, result.after, chatText = result.display)
             // e.g. the briefing: speak the local part, then fetch the rest.
-            result.reply.isNotBlank() -> say(result.reply, after = { think(question, result.withScreen) })
-            else -> think(question, result.withScreen)
+            result.reply.isNotBlank() -> say(result.reply, after = { think(question, result.withScreen, result.detailed) })
+            else -> think(question, result.withScreen, result.detailed)
         }
+    }
+
+    private fun lockedNow(): Boolean = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
+
+    /** Asks for the phone to be unlocked; the window runs [command] once it is. */
+    private fun askUnlock(command: String) {
+        pendingUnlock = command
+        if (!JarvisBus.hasScreen) showWindow()
+        JarvisBus.needUnlock(command)
+        say(Lang.get(prefs, Lang.Line.UNLOCK_FIRST))
+    }
+
+    private fun isActive() = System.currentTimeMillis() < activeUntil
+
+    /** "Voxa" was heard: start a conversation and show Voxa's window (on the lock screen too). */
+    private fun activate() {
+        activeUntil = System.currentTimeMillis() + ACTIVE_MS
+        showWindow()
+    }
+
+    /** The conversation is over: close the window and wait for "Voxa" again. */
+    private fun goToSleep() {
+        activeUntil = 0L
+        quietFollowUp = false
+        JarvisBus.sleep()
+    }
+
+    private fun showWindow() {
+        if (!prefs.lockWindow || MainActivity.visible || VoxaWindowActivity.open) return
+        val intent = Intent(this, VoxaWindowActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+        // Android lets the bound phone-control service open screens from the background.
+        val starter: android.content.Context = JarvisAccessibilityService.instance ?: this
+        try {
+            starter.startActivity(intent)
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Android didn't let the microphone start in the background (e.g. after a reboot): one tap wakes Voxa. */
+    private fun postWakeUpNotification() {
+        val nm = getSystemService(NotificationManager::class.java)
+        if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+            nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Voxa listening", NotificationManager.IMPORTANCE_LOW))
+        }
+        val wake = PendingIntent.getForegroundService(
+            this, 2, Intent(this, JarvisService::class.java).setAction(ACTION_START_WAKE), PendingIntent.FLAG_IMMUTABLE
+        )
+        nm.notify(
+            WAKE_NOTIF_ID,
+            NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_jarvis)
+                .setContentTitle("Voxa is asleep")
+                .setContentText("Tap to turn \"Voxa\" listening back on")
+                .setContentIntent(wake)
+                .setAutoCancel(true)
+                .build()
+        )
     }
 
     private fun applyControl(result: CommandProcessor.Result) {
         when (result.control) {
             CommandProcessor.Control.STOP_LISTENING -> {
-                wakeMode = false
+                // With the wake word on, "sleep" just ends the conversation; "Voxa" wakes her again.
                 awaitingCommand = false
+                goToSleep()
+            }
+            CommandProcessor.Control.TURN_OFF -> {
+                wakeMode = false
+                prefs.wakeEnabled = false
+                awaitingCommand = false
+                goToSleep()
             }
             CommandProcessor.Control.RELOCK -> unlockedUntil = 0L
             CommandProcessor.Control.NEW_CHAT -> brain.forget()
@@ -614,6 +735,10 @@ class JarvisService : Service(), RecognitionListener {
     private fun runAiCommand(command: String) {
         JarvisBus.status(command)
         ChatStore.add(this, ChatStore.Role.NOTE, "Running: $command")
+        if (lockedNow() && processor.needsUnlock(command)) {
+            askUnlock(command)
+            return
+        }
         val result = processor.handle(command, context = lastUserText)
         applyControl(result)
         // Never bounce back to the AI a second time.
@@ -624,7 +749,7 @@ class JarvisService : Service(), RecognitionListener {
         say(result.reply, result.after)
     }
 
-    private fun think(question: String, withScreen: Boolean = false) {
+    private fun think(question: String, withScreen: Boolean = false, detailed: Boolean = false) {
         busy = true
         thinking = true
         stopListening()
@@ -642,7 +767,7 @@ class JarvisService : Service(), RecognitionListener {
                 askBrain(withText, listOfNotNull(jpeg), myTurn)
             }
         } else {
-            askBrain(question, emptyList(), myTurn)
+            askBrain(question, emptyList(), myTurn, detailed)
         }
     }
 

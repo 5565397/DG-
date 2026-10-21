@@ -35,6 +35,16 @@ class JarvisAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        // Android starts phone control at boot; bring the wake word back with it if it was on.
+        val prefs = Prefs(this)
+        if (prefs.wakeEnabled && !JarvisService.isRunning && Setup.hasMic(this)) {
+            try {
+                androidx.core.content.ContextCompat.startForegroundService(
+                    this, android.content.Intent(this, JarvisService::class.java).setAction(JarvisService.ACTION_START_WAKE)
+                )
+            } catch (_: Exception) {
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}

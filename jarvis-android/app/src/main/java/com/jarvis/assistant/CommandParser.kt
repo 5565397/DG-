@@ -17,7 +17,14 @@ object CommandParser {
 
     sealed class Action {
         object Empty : Action()
+        /** Go back to sleep: only the wake word wakes Voxa again. */
         object StopListening : Action()
+        /** Switch Voxa off completely, wake word included. */
+        object TurnOff : Action()
+        /** What came in on one app ([app] is the user's words naming it) or on all apps; [summary] asks for an overview. */
+        data class AppNews(val app: String?, val summary: Boolean) : Action()
+        /** Calendar events for today (0) or tomorrow (1). */
+        data class Schedule(val dayOffset: Int) : Action()
         object Relock : Action()
         object NewChat : Action()
         object Greet : Action()
@@ -101,12 +108,45 @@ object CommandParser {
     private const val UNIT = "(second|sec|minute|min|hour|hr)s?"
     private const val CLOCK = "(\\d{1,2})(?::(\\d{2})| (\\d{2}))?(?: ?([ap])\\.? ?m\\.?)?(?: (?:in the |at )?(morning|evening|night|afternoon|tonight))?"
 
+    private val NOT_A_QUESTION_ABOUT_NEWS = Regex("^(send|text|message|sms|tell(?! me)|whats ?app|compose|write|type|open|call|reply|delete|clear|turn|mute|search|google|play|find|navigate|take|set|add|create|book|schedule an? )\\b")
+    /** Requests that only mention mail, meetings or updates in passing ("remind me to check my email"). */
+    private val ABOUT_SOMETHING_ELSE = Regex("\\b(remind|reminder|alarm|timer|wake me)\\b")
+    private val NEWS_WORDS = Regex("\\b(notifications?|updates?|e-?mails?|mails?|inbox|messages?|alerts?|texts?)\\b")
+    private val ASK_WORDS = Regex("\\b(read|check|show|tell|what|what's|whats|any|summari[sz]e|summary|brief|got|new|latest|did i get)\\b")
+    private val SUMMARY_WORDS = Regex("\\b(summari[sz]e|summary|overview|brief|everything|all of)\\b")
+    private val WHATS_NEW = Regex("\\b(what's new|whats new|what is new|anything new|what came)\\b")
+
+    /** "any new emails?", "read my WhatsApp messages", "what's new on YouTube Studio", "summarize my notifications". */
+    private fun appNews(c: String): Action? {
+        if (NOT_A_QUESTION_ABOUT_NEWS.containsMatchIn(c) || ABOUT_SOMETHING_ELSE.containsMatchIn(c)) return null
+        val app = NotificationStore.packagesFor(c)
+        val summary = SUMMARY_WORDS.containsMatchIn(c)
+        val aboutNews = NEWS_WORDS.containsMatchIn(c) && ASK_WORDS.containsMatchIn(c)
+        return when {
+            app != null && (aboutNews || WHATS_NEW.containsMatchIn(c)) -> Action.AppNews(c, summary)
+            aboutNews && summary -> Action.AppNews(null, true)
+            else -> null
+        }
+    }
+
+    private val SCHEDULE_WORDS = Regex("\\b(calendar|schedule|agenda|meetings?|events?|appointments?)\\b")
+
+    /** "what's on my calendar", "my schedule tomorrow", "any meetings today" — not "schedule a meeting" or "open calendar". */
+    private fun schedule(c: String): Action? {
+        if (!SCHEDULE_WORDS.containsMatchIn(c)) return null
+        if (NOT_A_QUESTION_ABOUT_NEWS.containsMatchIn(c) || ABOUT_SOMETHING_ELSE.containsMatchIn(c)) return null
+        if (Regex("^(make|new|cancel)\\b").containsMatchIn(c)) return null
+        if (!Regex("\\b(what|what's|whats|show|read|tell|check|any|do i have|my|today|tomorrow)\\b").containsMatchIn(c)) return null
+        return Action.Schedule(if (Regex("\\btomorrow\\b").containsMatchIn(c)) 1 else 0)
+    }
+
     private fun route(c: String): Action {
         fun m(pattern: String) = Regex(pattern).matchEntire(c)
         var r: MatchResult?
 
         // ----- Voxa itself -----
-        if (m("(stop listening|go to sleep|sleep|go offline|goodbye|bye|bye bye|shut ?down|stop|that's all|that is all)") != null) return Action.StopListening
+        if (m("(go offline|shut ?down|turn (yourself )?off|switch (yourself )?off|power off voxa|turn off voxa)") != null) return Action.TurnOff
+        if (m("(stop listening|go to sleep|sleep|goodbye|bye|bye bye|stop|that's all|that is all|rest|go rest)") != null) return Action.StopListening
         if (m("(lock|secure) (yourself|voxa|voice|assistant)|voice lock|lock voice") != null) return Action.Relock
         if (m("(new conversation|new chat|start over|forget (that|it|our conversation)|clear (the )?(chat|conversation))") != null) return Action.NewChat
         if (m("(forget|clear|erase|delete) (everything you remember|your memory|(all )?(your )?memories|what you remember)|clear memory") != null) return Action.ClearMemory
@@ -125,6 +165,8 @@ object CommandParser {
         if (m("(what('s| is) (the |my )?)?battery( level| status| percentage)?|how much (battery|charge)( is left| do i have| left)?|battery left") != null) return Action.Battery
 
         // ----- Notifications & screen understanding -----
+        appNews(c)?.let { return it }
+        schedule(c)?.let { return it }
         if (m("(read|check|show me|tell me)( out)? (my |the |new )?(notifications|messages|texts)|any (new )?(messages|notifications|texts)|what did i miss|do i have (any )?(new )?(messages|notifications)|who (texted|messaged) me") != null)
             return Action.ReadNotifications
         r = m("(?:what's|what is) on (?:my |the |this )?screen|describe (?:the |my |this )?screen|what am i looking at|explain (?:this|the|my) screen|help me with (?:this|the|my) screen|look at (?:my |the |this )?screen(?: and (.+))?")
