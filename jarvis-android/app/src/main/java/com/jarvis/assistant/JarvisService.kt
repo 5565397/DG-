@@ -710,6 +710,7 @@ class JarvisService : Service(), RecognitionListener {
         if (found.isBlank()) {
             say(when (lang) {
                 "ur" -> "اس فائل میں مجھے کوئی لکھائی نہیں ملی۔ تفصیل سے سمجھنے کے لیے اے آئی آن کیجیے۔"
+                Lang.HINGLISH -> "Is file mein mujhe koi likhai nahi mili. Poori tafseel ke liye AI on kijiye."
                 "hi" -> "इस फ़ाइल में मुझे कोई लिखावट नहीं मिली। पूरी तरह समझने के लिए AI चालू कीजिए।"
                 else -> "I couldn't find any text in this file. Turn on the AI for a full description."
             })
@@ -717,6 +718,7 @@ class JarvisService : Service(), RecognitionListener {
         }
         val spoken = when (lang) {
             "ur" -> "یہ فائل سے پڑھا گیا ہے۔ پوری تفصیل کے لیے اے آئی آن کیجیے۔"
+            Lang.HINGLISH -> "Ye file se parha gaya hai. Poori tafseel ke liye AI on kijiye."
             "hi" -> "फ़ाइल से यह पढ़ा। पूरी जानकारी के लिए AI चालू कीजिए।"
             else -> "Here's what I could read on the phone. Turn on the AI for a full analysis."
         }

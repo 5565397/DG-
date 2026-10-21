@@ -484,6 +484,7 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
     private fun hint(): String = when (Lang.mode(prefs)) {
         "ur" -> "اورب کو چھوئیں اور بولیں، یا نیچے لکھیں۔"
         "hi" -> "ऑर्ब को छुएँ और बोलें, या नीचे लिखें।"
+        Lang.HINGLISH -> "Orb ko chhuyein aur bolein, ya neeche likhein."
         else -> "Tap the orb and speak, or type below."
     }
 
@@ -493,6 +494,7 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         return when (Lang.mode(prefs)) {
             "ur" -> (if (hour in 4..11) "صبح بخیر" else if (hour in 12..16) "السلام علیکم" else "شام بخیر") + "، " + (if (isSir) "سر" else prefs.title)
             "hi" -> (if (hour in 4..11) "सुप्रभात" else if (hour in 12..16) "नमस्ते" else "शुभ संध्या") + ", " + (if (isSir) "सर" else prefs.title)
+            Lang.HINGLISH -> (if (hour in 4..11) "Subah bakhair" else if (hour in 12..16) "Assalam o Alaikum" else "Shaam bakhair") + ", " + prefs.title.replaceFirstChar { it.uppercase() }
             else -> (when {
                 hour < 5 -> "Good evening"
                 hour < 12 -> "Good morning"

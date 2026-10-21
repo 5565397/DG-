@@ -101,7 +101,12 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 .show()
         }
-        if (!prefs.language.startsWith("en")) {
+        switchRow(card, "Reply in Hinglish", "Voxa understands Urdu, Hindi and English, and always answers in Roman Urdu/Hindi (\"Theek hai sir, kar diya\").", prefs.replyHinglish) { on ->
+            prefs.replyHinglish = on
+            rebuild()
+            true
+        }
+        if (!prefs.replyHinglish && !prefs.language.startsWith("en")) {
             val wantUrdu = prefs.language.startsWith("ur") || prefs.language == Lang.AUTO
             val hasVoice = if (wantUrdu) (urduVoice == true || hindiVoice == true) else hindiVoice == true
             val subtitle = when {
@@ -291,7 +296,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Voxa 3.6"
+        tv.text = "Voxa 3.7"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER

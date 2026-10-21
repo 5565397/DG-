@@ -27,12 +27,17 @@ object Lang {
         return when (mode(prefs)) {
             "hi" -> hindi(line, if (sir == "sir") "सर" else sir)
             "ur" -> urdu(line, if (sir == "sir") "سر" else sir)
+            HINGLISH -> hinglish(line, sir)
             else -> english(line, sir)
         }
     }
 
-    /** "en", "hi" or "ur" — the language Voxa should talk in right now. */
+    /** Replies in Hindustani written with Roman letters ("Theek hai, sir"). */
+    const val HINGLISH = "rm"
+
+    /** "en", "hi", "ur" or [HINGLISH] — the language Voxa should talk in right now. */
     fun mode(prefs: Prefs): String {
+        if (prefs.replyHinglish) return HINGLISH
         val wanted = when {
             prefs.language == AUTO -> lastInput
             prefs.language.startsWith("hi") -> "hi"
@@ -59,6 +64,18 @@ object Lang {
         Line.NO_BRAIN -> "Online AI is off, $sir. Turn on Groq in Settings to ask me anything."
         Line.CANT_DO -> "I'm not sure how to do that on this phone, $sir."
         Line.THINKING -> "Thinking…"
+    }
+
+    private fun hinglish(line: Line, sir: String) = when (line) {
+        Line.YES -> "Ji, $sir?"
+        Line.DIDNT_CATCH -> "Maaf kijiye $sir, theek se sun nahi payi."
+        Line.GLITCH -> "Sunne mein thodi gadbad hui. Dobara boliye, $sir."
+        Line.VOICE_CHECK -> "Awaaz ki jaanch, $sir. Beep ke baad apna passphrase boliye."
+        Line.VOICE_DENIED -> "Ye awaaz pehchani nahi gayi. Ijazat nahi hai."
+        Line.MIC_FAIL -> "Awaaz ki jaanch ke liye mic nahi mila. Dobara koshish kijiye, $sir."
+        Line.NO_BRAIN -> "Online AI band hai, $sir. Kuch bhi poochne ke liye Settings mein Groq on kar dijiye."
+        Line.CANT_DO -> "Ye kaam is phone par kaise karun, mujhe pakka nahi pata, $sir."
+        Line.THINKING -> "Soch rahi hoon…"
     }
 
     private fun hindi(line: Line, sir: String) = when (line) {

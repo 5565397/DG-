@@ -12,6 +12,8 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
     companion object {
         private val ENGLISH = Locale.UK
+        /** Reads Roman Urdu/Hindi (Hinglish) far more naturally than a British or American voice. */
+        private val INDIAN_ENGLISH = Locale("en", "IN")
         private val HINDI = Locale("hi", "IN")
         private val URDU = Locale("ur", "PK")
 
@@ -25,6 +27,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             private set
     }
 
+    private val prefs = Prefs(context.applicationContext)
     private var currentLocale: Locale? = null
     private val main = Handler(Looper.getMainLooper())
     private val tts = TextToSpeech(context.applicationContext, this)
@@ -83,8 +86,11 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         Hindustani.isUrduScript(text) && urduVoice -> URDU
         Hindustani.isDevanagari(text) && hindiVoice -> HINDI
         Hindustani.isUrduScript(text) && hindiVoice -> HINDI
+        hinglish -> INDIAN_ENGLISH
         else -> ENGLISH
     }
+
+    private val hinglish: Boolean get() = prefs.replyHinglish
 
     private fun useLocale(locale: Locale) {
         if (locale == currentLocale) return

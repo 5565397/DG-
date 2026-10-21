@@ -27,6 +27,11 @@ class Prefs(context: Context) {
         get() = sp.getString("title", "sir") ?: "sir"
         set(v) = sp.edit().putString("title", v).apply()
 
+    /** Voxa understands Urdu/Hindi/English, but answers in Hinglish (Roman letters) when this is on. */
+    var replyHinglish: Boolean
+        get() = sp.getBoolean("reply_hinglish", true)
+        set(v) = sp.edit().putBoolean("reply_hinglish", v).apply()
+
     var countryCode: String
         get() = sp.getString("country_code", "") ?: ""
         set(v) = sp.edit().putString("country_code", v).apply()

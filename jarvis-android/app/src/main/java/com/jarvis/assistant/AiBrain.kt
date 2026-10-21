@@ -86,9 +86,10 @@ class AiBrain(context: Context) {
         if (prefs.aiEngine == Prefs.ENGINE_CLAUDE) "Use web search for anything current or time-sensitive (news, sports scores, weather, prices, recent events), then give the answer in a sentence or two."
         else "For anything current or time-sensitive (news, scores, weather, prices), use web results if you have them; if you don't, say briefly that you can't check live information right now."
 
-    private fun t(en: String, hi: String, ur: String) = when (Lang.mode(prefs)) {
+    private fun t(en: String, hi: String, ur: String, rm: String = en) = when (Lang.mode(prefs)) {
         "hi" -> hi
         "ur" -> ur
+        Lang.HINGLISH -> rm
         else -> en
     }
 
@@ -105,6 +106,7 @@ class AiBrain(context: Context) {
     private fun languageRule(): String = when (Lang.mode(prefs)) {
         "hi" -> "Language: the user has chosen Hindi. Always reply in natural, conversational spoken Hindi (Hindustani) written in Devanagari script, whatever language the question is in. Common English words like phone, app or internet are fine, written in Devanagari. Call the user \"सर\" if their title is sir."
         "ur" -> "Language: the user has chosen Urdu. Always reply in natural, conversational spoken Urdu written in Urdu (Nastaliq) script, whatever language the question is in. Common English words like phone, app or internet are fine, written in Urdu script. Call the user \"سر\" if their title is sir."
+        Lang.HINGLISH -> "Language: the user may speak or write in Urdu, Hindi or English (any script) — understand all of it. Always reply in Hinglish: natural, conversational Urdu/Hindi written only in Roman (English) letters, mixed with everyday English words, the way people text in Pakistan and India (e.g. \"Theek hai sir, Elon Musk ek American businessman hain jo Tesla aur SpaceX chalate hain.\"). Never use Urdu or Devanagari script in your reply. Keep the CMD line in English as instructed."
         else -> "Language: reply in English. But if the user speaks or writes in Hindi or Urdu (in any script, including Roman letters), reply in that language: Hindi in Devanagari script, Urdu in Urdu script${if (Speaker.urduVoice) "" else " (this phone has no Urdu voice, so write Urdu replies in Devanagari script with Urdu vocabulary)"}. Never reply in Roman Hindi or Urdu, because the voice can't read it."
     }
 
@@ -147,7 +149,7 @@ class AiBrain(context: Context) {
             }
         }
         val answer = if (command != null) "" else cleanForSpeech(text)
-        if (command == null && answer.isBlank()) return Reply(t("I came up empty on that one, ${prefs.title}.", "इसका जवाब नहीं मिला।", "اس کا جواب نہیں ملا۔"))
+        if (command == null && answer.isBlank()) return Reply(t("I came up empty on that one, ${prefs.title}.", "इसका जवाब नहीं मिला।", "اس کا جواب نہیں ملا۔", "Iska jawab nahi mila, ${prefs.title}."))
         val display = if (detailed && command == null) cleanForChat(text) else answer
         val speech = if (detailed) firstSentences(answer, 320) else answer
 
@@ -179,13 +181,13 @@ class AiBrain(context: Context) {
             ))
         } catch (e: GroqClient.GroqException) {
             Raw(error = when (e.code) {
-                401, 403 -> t("My Groq key was rejected, ${prefs.title}. Please check it in Settings.", "Groq की key काम नहीं कर रही। सेटिंग्स में देख लीजिए।", "Groq کی key کام نہیں کر رہی۔ سیٹنگز میں دیکھ لیجیے۔")
-                413 -> t("That file is too big for Groq in one go. Try a shorter file or a single page.", "यह फ़ाइल Groq के लिए बहुत बड़ी है। छोटी फ़ाइल भेजिए।", "یہ فائل Groq کے لیے بہت بڑی ہے۔ چھوٹی فائل بھیجیے۔")
-                429 -> t("Groq says I'm asking too fast. Give me a moment and try again.", "Groq की लिमिट पूरी हो गई। थोड़ी देर बाद पूछिए।", "Groq کی حد پوری ہو گئی۔ تھوڑی دیر بعد پوچھیے۔")
-                else -> t("My Groq service had a problem. Error ${e.code}.", "Groq में दिक़्क़त आई। एरर ${e.code}।", "Groq میں مسئلہ آیا۔ ایرر ${e.code}۔")
+                401, 403 -> t("My Groq key was rejected, ${prefs.title}. Please check it in Settings.", "Groq की key काम नहीं कर रही। सेटिंग्स में देख लीजिए।", "Groq کی key کام نہیں کر رہی۔ سیٹنگز میں دیکھ لیجیے۔", "Groq key kaam nahi kar rahi, ${prefs.title}. Settings mein check kar lijiye.")
+                413 -> t("That file is too big for Groq in one go. Try a shorter file or a single page.", "यह फ़ाइल Groq के लिए बहुत बड़ी है। छोटी फ़ाइल भेजिए।", "یہ فائل Groq کے لیے بہت بڑی ہے۔ چھوٹی فائل بھیجیے۔", "Ye file Groq ke liye bohat bari hai. Choti file ya ek page bhejiye.")
+                429 -> t("Groq says I'm asking too fast. Give me a moment and try again.", "Groq की लिमिट पूरी हो गई। थोड़ी देर बाद पूछिए।", "Groq کی حد پوری ہو گئی۔ تھوڑی دیر بعد پوچھیے۔", "Groq ki limit poori ho gayi. Thodi der baad poochiye.")
+                else -> t("My Groq service had a problem. Error ${e.code}.", "Groq में दिक़्क़त आई। एरर ${e.code}।", "Groq میں مسئلہ آیا۔ ایرر ${e.code}۔", "Groq mein masla aaya. Error ${e.code}.")
             })
         } catch (e: Exception) {
-            Raw(error = t("I couldn't reach Groq. Check the internet connection, ${prefs.title}.", "Groq से कनेक्ट नहीं हो पाई। इंटरनेट देख लीजिए।", "Groq سے رابطہ نہیں ہو سکا۔ انٹرنیٹ دیکھ لیجیے۔"))
+            Raw(error = t("I couldn't reach Groq. Check the internet connection, ${prefs.title}.", "Groq से कनेक्ट नहीं हो पाई। इंटरनेट देख लीजिए।", "Groq سے رابطہ نہیں ہو سکا۔ انٹرنیٹ دیکھ لیجیے۔", "Groq se rabta nahi ho saka. Internet check kar lijiye, ${prefs.title}."))
         }
     }
 
@@ -234,18 +236,18 @@ class AiBrain(context: Context) {
                 rounds++
             }
             if (response.stopReason().orElse(null) == StopReason.REFUSAL) {
-                Raw(error = t("I'm afraid I can't help with that one, ${prefs.title}.", "माफ़ कीजिए, इसमें मदद नहीं कर सकती।", "معاف کیجیے، اس میں مدد نہیں کر سکتی۔"))
+                Raw(error = t("I'm afraid I can't help with that one, ${prefs.title}.", "माफ़ कीजिए, इसमें मदद नहीं कर सकती।", "معاف کیجیے، اس میں مدد نہیں کر سکتی۔", "Maaf kijiye, is mein madad nahi kar sakti, ${prefs.title}."))
             } else {
                 Raw(parts.toString())
             }
         } catch (e: UnauthorizedException) {
-            Raw(error = t("My Claude key was rejected, ${prefs.title}. Please check it in Settings.", "Claude की key काम नहीं कर रही।", "Claude کی key کام نہیں کر رہی۔"))
+            Raw(error = t("My Claude key was rejected, ${prefs.title}. Please check it in Settings.", "Claude की key काम नहीं कर रही।", "Claude کی key کام نہیں کر رہی۔", "Claude key kaam nahi kar rahi, ${prefs.title}. Settings mein check kar lijiye."))
         } catch (e: RateLimitException) {
-            Raw(error = t("I'm being rate limited right now. Give me a moment and ask again.", "अभी लिमिट पूरी हो गई। थोड़ी देर बाद पूछिए।", "ابھی حد پوری ہو گئی۔ تھوڑی دیر بعد پوچھیے۔"))
+            Raw(error = t("I'm being rate limited right now. Give me a moment and ask again.", "अभी लिमिट पूरी हो गई। थोड़ी देर बाद पूछिए।", "ابھی حد پوری ہو گئی۔ تھوڑی دیر بعد پوچھیے۔", "Abhi limit poori ho gayi. Thodi der baad poochiye."))
         } catch (e: AnthropicServiceException) {
-            Raw(error = t("My AI service had a problem. Error ${e.statusCode()}.", "AI में दिक़्क़त आई। एरर ${e.statusCode()}।", "اے آئی میں مسئلہ آیا۔ ایرر ${e.statusCode()}۔"))
+            Raw(error = t("My AI service had a problem. Error ${e.statusCode()}.", "AI में दिक़्क़त आई। एरर ${e.statusCode()}।", "اے آئی میں مسئلہ آیا۔ ایرر ${e.statusCode()}۔", "AI mein masla aaya. Error ${e.statusCode()}."))
         } catch (e: Exception) {
-            Raw(error = t("I couldn't reach my AI brain. Check the internet connection, ${prefs.title}.", "AI से कनेक्ट नहीं हो पाई। इंटरनेट देख लीजिए।", "اے آئی سے رابطہ نہیں ہو سکا۔ انٹرنیٹ دیکھ لیجیے۔"))
+            Raw(error = t("I couldn't reach my AI brain. Check the internet connection, ${prefs.title}.", "AI से कनेक्ट नहीं हो पाई। इंटरनेट देख लीजिए।", "اے آئی سے رابطہ نہیں ہو سکا۔ انٹرنیٹ دیکھ لیجیے۔", "AI se rabta nahi ho saka. Internet check kar lijiye, ${prefs.title}."))
         }
     }
 

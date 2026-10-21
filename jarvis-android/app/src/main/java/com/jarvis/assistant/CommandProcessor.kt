@@ -68,9 +68,10 @@ class CommandProcessor(private val ctx: Context) {
     private val sirUr: String get() = if (prefs.title.equals("sir", true)) "سر" else prefs.title
 
     /** Picks the line in the language Voxa is speaking. */
-    private fun L(en: String, hi: String, ur: String) = when (mode) {
+    private fun L(en: String, hi: String, ur: String, rm: String = en) = when (mode) {
         "hi" -> hi
         "ur" -> ur
+        Lang.HINGLISH -> rm
         else -> en
     }
 
@@ -79,11 +80,12 @@ class CommandProcessor(private val ctx: Context) {
             L(
                 "I need phone control for that, $sir. Turn it on in Settings, under Setup.",
                 "इसके लिए मुझे फ़ोन कंट्रोल चाहिए, $sirHi। सेटिंग्स में सेटअप के अंदर इसे चालू कर दीजिए।",
-                "اس کے لیے مجھے فون کنٹرول چاہیے، $sirUr۔ سیٹنگز میں سیٹ اپ کے اندر اسے آن کر دیجیے۔"
+                "اس کے لیے مجھے فون کنٹرول چاہیے، $sirUr۔ سیٹنگز میں سیٹ اپ کے اندر اسے آن کر دیجیے۔",
+                "Iske liye mujhe phone control chahiye, $sir. Settings mein Setup se on kar dijiye."
             )
         )
 
-    private val noClockApp get() = Result(L("I couldn't find a clock app, $sir.", "घड़ी वाली ऐप नहीं मिली, $sirHi।", "گھڑی والی ایپ نہیں ملی، $sirUr۔"))
+    private val noClockApp get() = Result(L("I couldn't find a clock app, $sir.", "घड़ी वाली ऐप नहीं मिली, $sirHi।", "گھڑی والی ایپ نہیں ملی، $sirUr۔", "Mujhe clock app nahi mili, $sir."))
 
     // ---------------------------------------------------------------- entry
 
@@ -103,36 +105,38 @@ class CommandProcessor(private val ctx: Context) {
             Result(L(
                 "I don't have permission for that yet, $sir. Please grant it in Settings.",
                 "इसकी इजाज़त अभी नहीं मिली, $sirHi। सेटिंग्स में दे दीजिए।",
-                "اس کی اجازت ابھی نہیں ملی، $sirUr۔ سیٹنگز میں دے دیجیے۔"
+                "اس کی اجازت ابھی نہیں ملی، $sirUr۔ سیٹنگز میں دے دیجیے۔",
+                "Iski permission abhi nahi mili, $sir. Settings mein allow kar dijiye."
             ))
         } catch (e: Exception) {
-            Result(L("Something went wrong, $sir.", "कुछ गड़बड़ हो गई, $sirHi।", "کچھ گڑبڑ ہو گئی، $sirUr۔"))
+            Result(L("Something went wrong, $sir.", "कुछ गड़बड़ हो गई, $sirHi।", "کچھ گڑبڑ ہو گئی، $sirUr۔", "Kuch gadbad ho gayi, $sir."))
         }
     }
 
     private fun execute(action: Action): Result = when (action) {
         Action.Empty -> Result(Lang.get(prefs, Lang.Line.YES))
         Action.StopListening -> Result(
-            L("Going offline. Call me when you need me, $sir.", "मैं आराम करता हूँ। ज़रूरत हो तो बुला लीजिए, $sirHi।", "میں آرام کرتا ہوں۔ ضرورت ہو تو بلا لیجیے، $sirUr۔"),
+            L("Going offline. Call me when you need me, $sir.", "मैं आराम करता हूँ। ज़रूरत हो तो बुला लीजिए, $sirHi।", "میں آرام کرتا ہوں۔ ضرورت ہو تو بلا لیجیے، $sirUr۔", "Main offline ja rahi hoon. Zaroorat ho to bula lijiye, $sir."),
             Control.STOP_LISTENING
         )
-        Action.Relock -> Result(L("Voice lock engaged, $sir.", "वॉइस लॉक चालू, $sirHi।", "وائس لاک آن، $sirUr۔"), Control.RELOCK)
-        Action.NewChat -> Result(L("Fresh start, $sir. What's on your mind?", "नई शुरुआत, $sirHi। बताइए?", "نئی شروعات، $sirUr۔ بتائیے؟"), Control.NEW_CHAT)
-        Action.Greet -> Result(L("${greeting()}, $sir. At your service.", "${greeting()}, $sirHi। हुक्म कीजिए।", "${greeting()}، $sirUr۔ حکم کیجیے۔"))
+        Action.Relock -> Result(L("Voice lock engaged, $sir.", "वॉइस लॉक चालू, $sirHi।", "وائس لاک آن، $sirUr۔", "Voice lock on ho gaya, $sir."), Control.RELOCK)
+        Action.NewChat -> Result(L("Fresh start, $sir. What's on your mind?", "नई शुरुआत, $sirHi। बताइए?", "نئی شروعات، $sirUr۔ بتائیے؟", "Nayi shuruaat, $sir. Batayiye kya baat hai?"), Control.NEW_CHAT)
+        Action.Greet -> Result(L("${greeting()}, $sir. At your service.", "${greeting()}, $sirHi। हुक्म कीजिए।", "${greeting()}، $sirUr۔ حکم کیجیے۔", "${greeting()}, $sir. Hukam kijiye."))
         Action.Briefing -> briefing()
         Action.WhoAreYou -> Result(L(
             "I'm Voxa, your personal assistant, $sir.",
             "मैं वोक्सा हूँ, आपकी पर्सनल असिस्टेंट, $sirHi।",
-            "میں ووکسا ہوں، آپ کی پرسنل اسسٹنٹ، $sirUr۔"
+            "میں ووکسا ہوں، آپ کی پرسنل اسسٹنٹ، $sirUr۔",
+            "Main Voxa hoon, aapki personal assistant, $sir."
         ))
-        Action.Thanks -> Result(L("Always a pleasure, $sir.", "आपकी ख़िदमत में हमेशा, $sirHi।", "آپ کی خدمت میں ہمیشہ، $sirUr۔"))
-        Action.Help -> Result(L(HELP_EN, HELP_HI, HELP_UR))
+        Action.Thanks -> Result(L("Always a pleasure, $sir.", "आपकी ख़िदमत में हमेशा, $sirHi।", "آپ کی خدمت میں ہمیشہ، $sirUr۔", "Aapki khidmat mein hamesha khushi hoti hai, $sir."))
+        Action.Help -> Result(L(HELP_EN, HELP_HI, HELP_UR, HELP_RM))
         Action.Time -> {
             val c = Calendar.getInstance()
             val t = spokenTime(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
-            Result(L("It's $t, $sir.", "अभी $t बजे हैं, $sirHi।", "ابھی $t بجے ہیں، $sirUr۔"))
+            Result(L("It's $t, $sir.", "अभी $t बजे हैं, $sirHi।", "ابھی $t بجے ہیں، $sirUr۔", "Abhi $t baje hain, $sir."))
         }
-        Action.Date -> Result(L("Today is ${spokenDate()}.", "आज ${spokenDate()} है।", "آج ${spokenDate()} ہے۔"))
+        Action.Date -> Result(L("Today is ${spokenDate()}.", "आज ${spokenDate()} है।", "آج ${spokenDate()} ہے۔", "Aaj ${spokenDate()} hai."))
         Action.Battery -> battery()
         is Action.GlobalAction -> when (action.kind) {
             Global.HOME -> global(AccessibilityService.GLOBAL_ACTION_HOME, L("Home.", "होम।", "ہوم۔"))
@@ -146,28 +150,28 @@ class CommandProcessor(private val ctx: Context) {
             val s = a11y
             when {
                 s == null -> needA11y
-                Build.VERSION.SDK_INT < 28 -> Result(L("Screenshots need Android 9 or newer, $sir.", "स्क्रीनशॉट के लिए Android 9 या नया चाहिए।", "اسکرین شاٹ کے لیے Android 9 یا نیا چاہیے۔"))
-                else -> Result(L("Screenshot.", "स्क्रीनशॉट।", "اسکرین شاٹ۔"), after = { main.postDelayed({ s.global(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT) }, 600) })
+                Build.VERSION.SDK_INT < 28 -> Result(L("Screenshots need Android 9 or newer, $sir.", "स्क्रीनशॉट के लिए Android 9 या नया चाहिए।", "اسکرین شاٹ کے لیے Android 9 یا نیا چاہیے۔", "Screenshot ke liye Android 9 ya naya chahiye, $sir."))
+                else -> Result(L("Screenshot.", "स्क्रीनशॉट।", "اسکرین شاٹ۔", "Screenshot le liya."), after = { main.postDelayed({ s.global(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT) }, 600) })
             }
         }
         Action.LockScreen -> {
             val s = a11y
             when {
                 s == null -> needA11y
-                Build.VERSION.SDK_INT < 28 -> Result(L("Locking needs Android 9 or newer, $sir.", "लॉक के लिए Android 9 या नया चाहिए।", "لاک کے لیے Android 9 یا نیا چاہیے۔"))
-                else -> Result(L("Locking the phone.", "फ़ोन लॉक कर रही हूँ।", "فون لاک کر رہی ہوں۔"), after = { s.global(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) })
+                Build.VERSION.SDK_INT < 28 -> Result(L("Locking needs Android 9 or newer, $sir.", "लॉक के लिए Android 9 या नया चाहिए।", "لاک کے لیے Android 9 یا نیا چاہیے۔", "Lock ke liye Android 9 ya naya chahiye, $sir."))
+                else -> Result(L("Locking the phone.", "फ़ोन लॉक कर रही हूँ।", "فون لاک کر رہی ہوں۔", "Phone lock kar rahi hoon."), after = { s.global(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) })
             }
         }
         is Action.Scroll -> a11y?.let {
-            if (it.scroll(action.direction)) Result("") else Result(L("I couldn't scroll here, $sir.", "यहाँ स्क्रॉल नहीं हो रहा।", "یہاں اسکرول نہیں ہو رہا۔"))
+            if (it.scroll(action.direction)) Result("") else Result(L("I couldn't scroll here, $sir.", "यहाँ स्क्रॉल नहीं हो रहा।", "یہاں اسکرول نہیں ہو رہا۔", "Yahan scroll nahi ho saka, $sir."))
         } ?: needA11y
         is Action.Click -> a11y?.let {
             if (it.clickText(action.target)) Result("")
-            else Result(L("I can't find ${action.target} on the screen, $sir.", "स्क्रीन पर ${action.target} नहीं मिला।", "اسکرین پر ${action.target} نہیں ملا۔"))
+            else Result(L("I can't find ${action.target} on the screen, $sir.", "स्क्रीन पर ${action.target} नहीं मिला।", "اسکرین پر ${action.target} نہیں ملا۔", "Screen par ${action.target} nahi mila, $sir."))
         } ?: needA11y
         is Action.Type -> a11y?.let {
-            if (it.typeText(action.text)) Result(L("Typed.", "लिख दिया।", "لکھ دیا۔"))
-            else Result(L("I can't find a text box on the screen, $sir.", "स्क्रीन पर लिखने की जगह नहीं मिली।", "اسکرین پر لکھنے کی جگہ نہیں ملی۔"))
+            if (it.typeText(action.text)) Result(L("Typed.", "लिख दिया।", "لکھ دیا۔", "Likh diya."))
+            else Result(L("I can't find a text box on the screen, $sir.", "स्क्रीन पर लिखने की जगह नहीं मिली।", "اسکرین پر لکھنے کی جگہ نہیں ملی۔", "Screen par koi text box nahi mila, $sir."))
         } ?: needA11y
         Action.ReadScreen -> a11y?.let { readScreen(it) } ?: needA11y
         is Action.DescribeScreen -> {
@@ -181,25 +185,25 @@ class CommandProcessor(private val ctx: Context) {
         Action.ReadNotifications -> readNotifications()
         is Action.Remember -> {
             prefs.addMemory(action.fact)
-            Result(L("Got it, $sir. I'll remember that.", "ठीक है $sirHi, मैं याद रखूँगी।", "ٹھیک ہے $sirUr، میں یاد رکھوں گی۔"))
+            Result(L("Got it, $sir. I'll remember that.", "ठीक है $sirHi, मैं याद रखूँगी।", "ٹھیک ہے $sirUr، میں یاد رکھوں گی۔", "Theek hai, $sir. Ye yaad rakhungi."))
         }
         Action.Recall -> {
             val memories = prefs.memories
-            if (memories.isEmpty()) Result(L("You haven't asked me to remember anything yet, $sir.", "आपने अभी तक कुछ याद रखने को नहीं कहा।", "آپ نے ابھی تک کچھ یاد رکھنے کو نہیں کہا۔"))
-            else Result(L("Here's what I remember. ", "मुझे यह याद है। ", "مجھے یہ یاد ہے۔ ") + memories.joinToString(". ") { it.trimEnd('.', '۔', '।') } + ".")
+            if (memories.isEmpty()) Result(L("You haven't asked me to remember anything yet, $sir.", "आपने अभी तक कुछ याद रखने को नहीं कहा।", "آپ نے ابھی تک کچھ یاد رکھنے کو نہیں کہا۔", "Aapne abhi tak kuch yaad rakhne ko nahi kaha, $sir."))
+            else Result(L("Here's what I remember. ", "मुझे यह याद है। ", "مجھے یہ یاد ہے۔ ", "Mujhe ye yaad hai. ") + memories.joinToString(". ") { it.trimEnd('.', '۔', '।') } + ".")
         }
         Action.ClearMemory -> {
             prefs.memories = emptyList()
-            Result(L("Done. My memory is wiped clean, $sir.", "हो गया। सब भूल गई।", "ہو گیا۔ سب بھول گئی۔"))
+            Result(L("Done. My memory is wiped clean, $sir.", "हो गया। सब भूल गई।", "ہو گیا۔ سب بھول گئی۔", "Ho gaya. Meri memory saaf kar di, $sir."))
         }
         is Action.Torch -> torch(action.on)
         is Action.VolumeStep -> volumeStep(action.up)
         is Action.VolumeSet -> volumeSet(action.percent)
         is Action.Mute -> mute(action.on)
         is Action.RingerMode -> when (action.mode) {
-            Ringer.SILENT -> ringer(AudioManager.RINGER_MODE_SILENT, L("Silent mode.", "साइलेंट मोड।", "سائلنٹ موڈ۔"))
-            Ringer.VIBRATE -> ringer(AudioManager.RINGER_MODE_VIBRATE, L("Vibrate mode.", "वाइब्रेट मोड।", "وائبریٹ موڈ۔"))
-            Ringer.NORMAL -> ringer(AudioManager.RINGER_MODE_NORMAL, L("Ringer on.", "रिंगर चालू।", "رنگر آن۔"))
+            Ringer.SILENT -> ringer(AudioManager.RINGER_MODE_SILENT, L("Silent mode.", "साइलेंट मोड।", "سائلنٹ موڈ۔", "Silent mode on."))
+            Ringer.VIBRATE -> ringer(AudioManager.RINGER_MODE_VIBRATE, L("Vibrate mode.", "वाइब्रेट मोड।", "وائبریٹ موڈ۔", "Vibrate mode on."))
+            Ringer.NORMAL -> ringer(AudioManager.RINGER_MODE_NORMAL, L("Ringer on.", "रिंगर चालू।", "رنگر آن۔", "Ringer on kar diya."))
         }
         is Action.MediaKey -> when (action.key) {
             Media.PLAY -> media(KeyEvent.KEYCODE_MEDIA_PLAY)
@@ -244,6 +248,7 @@ class CommandProcessor(private val ctx: Context) {
         return when (mode) {
             "hi" -> when { h in 4..11 -> "सुप्रभात"; h in 12..16 -> "नमस्ते"; else -> "शुभ संध्या" }
             "ur" -> when { h in 4..11 -> "صبح بخیر"; h in 12..16 -> "السلام علیکم"; else -> "شام بخیر" }
+            Lang.HINGLISH -> when { h in 4..11 -> "Subah bakhair"; h in 12..16 -> "Assalam o Alaikum"; else -> "Shaam bakhair" }
             else -> when { h < 5 -> "Good evening"; h < 12 -> "Good morning"; h < 17 -> "Good afternoon"; else -> "Good evening" }
         }
     }
@@ -261,6 +266,7 @@ class CommandProcessor(private val ctx: Context) {
         return when (mode) {
             "hi" -> "${listOf("सुबह", "दोपहर", "शाम", "रात")[part]} $hm"
             "ur" -> "${listOf("صبح", "دوپہر", "شام", "رات")[part]} $hm"
+            Lang.HINGLISH -> "${listOf("subah", "dopahar", "shaam", "raat")[part]} ke $hm"
             else -> "$hm ${if (hour < 12) "AM" else "PM"}"
         }
     }
@@ -293,7 +299,7 @@ class CommandProcessor(private val ctx: Context) {
 
     private fun readScreen(s: JarvisAccessibilityService): Result {
         val text = s.readScreen()
-        return Result(if (text.isBlank()) L("I don't see any text on the screen, $sir.", "स्क्रीन पर कोई लिखाई नहीं दिख रही।", "اسکرین پر کوئی تحریر نظر نہیں آ رہی۔") else text)
+        return Result(if (text.isBlank()) L("I don't see any text on the screen, $sir.", "स्क्रीन पर कोई लिखाई नहीं दिख रही।", "اسکرین پر کوئی تحریر نظر نہیں آ رہی۔", "Screen par koi text nazar nahi aa raha, $sir.") else text)
     }
 
     private fun batteryLevel(): Pair<Int, Boolean> {
@@ -306,7 +312,8 @@ class CommandProcessor(private val ctx: Context) {
         return Result(L(
             "Battery is at $level percent${if (charging) " and charging" else ""}, $sir.",
             "बैटरी $level प्रतिशत है${if (charging) " और चार्ज हो रही है" else ""}, $sirHi।",
-            "بیٹری $level فیصد ہے${if (charging) " اور چارج ہو رہی ہے" else ""}، $sirUr۔"
+            "بیٹری $level فیصد ہے${if (charging) " اور چارج ہو رہی ہے" else ""}، $sirUr۔",
+            "Battery $level percent hai${if (charging) " aur charge ho rahi hai" else ""}, $sir."
         ))
     }
 
@@ -317,7 +324,8 @@ class CommandProcessor(private val ctx: Context) {
         val local = L(
             "${greeting()}, $sir. It's $time on ${spokenDate()}. Battery is at $level percent.",
             "${greeting()}, $sirHi। अभी $time बजे हैं, आज ${spokenDate()} है। बैटरी $level प्रतिशत है।",
-            "${greeting()}، $sirUr۔ ابھی $time بجے ہیں، آج ${spokenDate()} ہے۔ بیٹری $level فیصد ہے۔"
+            "${greeting()}، $sirUr۔ ابھی $time بجے ہیں، آج ${spokenDate()} ہے۔ بیٹری $level فیصد ہے۔",
+            "${greeting()}, $sir. Abhi $time baje hain, aaj ${spokenDate()} hai. Battery $level percent hai."
         )
         if (!hasBrain) return Result(local)
         val where = prefs.city.ifBlank { "my area" }
@@ -334,22 +342,24 @@ class CommandProcessor(private val ctx: Context) {
             return Result(L(
                 "I need notification access to read your messages, $sir. Turn on Voxa on the page I've opened.",
                 "मैसेज पढ़ने के लिए नोटिफिकेशन की इजाज़त चाहिए। खुले हुए पेज पर वोक्सा चालू कर दीजिए।",
-                "میسج پڑھنے کے لیے نوٹیفکیشن کی اجازت چاہیے۔ کھلے ہوئے صفحے پر ووکسا آن کر دیجیے۔"
+                "میسج پڑھنے کے لیے نوٹیفکیشن کی اجازت چاہیے۔ کھلے ہوئے صفحے پر ووکسا آن کر دیجیے۔",
+                "Messages parhne ke liye notification access chahiye, $sir. Jo page khola hai us par Voxa on kar dijiye."
             ))
         }
         val items = listener.recent(limit = 6)
-        if (items.isEmpty()) return Result(L("No new notifications, $sir.", "कोई नया नोटिफिकेशन नहीं है।", "کوئی نیا نوٹیفکیشن نہیں ہے۔"))
+        if (items.isEmpty()) return Result(L("No new notifications, $sir.", "कोई नया नोटिफिकेशन नहीं है।", "کوئی نیا نوٹیفکیشن نہیں ہے۔", "Koi nayi notification nahi hai, $sir."))
         listener.markAllRead()
         val spoken = items.joinToString(" ") { n ->
             val body = n.text.take(140)
-            if (n.title.isNotBlank()) L("${n.app}, from ${n.title}: $body.", "${n.app}, ${n.title} की तरफ़ से: $body।", "${n.app}، ${n.title} کی طرف سے: $body۔")
+            if (n.title.isNotBlank()) L("${n.app}, from ${n.title}: $body.", "${n.app}, ${n.title} की तरफ़ से: $body।", "${n.app}، ${n.title} کی طرف سے: $body۔", "${n.app} par ${n.title} ka message: $body.")
             else "${n.app}: $body."
         }
         val count = items.size
         return Result(L(
             "You have $count new notification${if (count == 1) "" else "s"}. $spoken",
             "आपके $count नए नोटिफिकेशन हैं। $spoken",
-            "آپ کے $count نئے نوٹیفکیشن ہیں۔ $spoken"
+            "آپ کے $count نئے نوٹیفکیشن ہیں۔ $spoken",
+            "Aapki $count nayi notification${if (count == 1) "" else "s"} hain. $spoken"
         ))
     }
 
@@ -358,11 +368,11 @@ class CommandProcessor(private val ctx: Context) {
         val cm = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val id = cm.cameraIdList.firstOrNull {
             cm.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-        } ?: return Result(L("This phone doesn't have a flashlight, $sir.", "इस फ़ोन में टॉर्च नहीं है।", "اس فون میں ٹارچ نہیں ہے۔"))
+        } ?: return Result(L("This phone doesn't have a flashlight, $sir.", "इस फ़ोन में टॉर्च नहीं है।", "اس فون میں ٹارچ نہیں ہے۔", "Is phone mein flashlight nahi hai, $sir."))
         cm.setTorchMode(id, on)
         return Result(
-            if (on) L("Flashlight on.", "टॉर्च चालू।", "ٹارچ آن۔")
-            else L("Flashlight off.", "टॉर्च बंद।", "ٹارچ بند۔")
+            if (on) L("Flashlight on.", "टॉर्च चालू।", "ٹارچ آن۔", "Flashlight on kar di.")
+            else L("Flashlight off.", "टॉर्च बंद।", "ٹارچ بند۔", "Flashlight band kar di.")
         )
     }
 
@@ -379,8 +389,8 @@ class CommandProcessor(private val ctx: Context) {
             )
         }
         return Result(
-            if (up) L("Volume up.", "आवाज़ बढ़ा दी।", "آواز بڑھا دی۔")
-            else L("Volume down.", "आवाज़ कम कर दी।", "آواز کم کر دی۔")
+            if (up) L("Volume up.", "आवाज़ बढ़ा दी।", "آواز بڑھا دی۔", "Awaaz barha di.")
+            else L("Volume down.", "आवाज़ कम कर दी।", "آواز کم کر دی۔", "Awaaz kam kar di.")
         )
     }
 
@@ -389,7 +399,7 @@ class CommandProcessor(private val ctx: Context) {
         val p = percent.coerceIn(0, 100)
         val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         am.setStreamVolume(AudioManager.STREAM_MUSIC, max * p / 100, AudioManager.FLAG_SHOW_UI)
-        return Result(L("Volume at $p percent.", "आवाज़ $p प्रतिशत।", "آواز $p فیصد۔"))
+        return Result(L("Volume at $p percent.", "आवाज़ $p प्रतिशत।", "آواز $p فیصد۔", "Volume $p percent par hai."))
     }
 
     private fun mute(on: Boolean): Result {
@@ -399,8 +409,8 @@ class CommandProcessor(private val ctx: Context) {
             AudioManager.FLAG_SHOW_UI
         )
         return Result(
-            if (on) L("Muted.", "म्यूट कर दिया।", "میوٹ کر دیا۔")
-            else L("Sound is back on.", "आवाज़ वापस चालू।", "آواز واپس آن۔")
+            if (on) L("Muted.", "म्यूट कर दिया।", "میوٹ کر دیا۔", "Mute kar diya.")
+            else L("Sound is back on.", "आवाज़ वापस चालू।", "آواز واپس آن۔", "Awaaz wapas on kar di.")
         )
     }
 
@@ -413,7 +423,8 @@ class CommandProcessor(private val ctx: Context) {
             Result(L(
                 "Android needs you to allow Do Not Disturb access for me first, $sir. I've opened the page.",
                 "पहले मुझे डू नॉट डिस्टर्ब की इजाज़त दीजिए। पेज खोल दिया है।",
-                "پہلے مجھے ڈو ناٹ ڈسٹرب کی اجازت دیجیے۔ صفحہ کھول دیا ہے۔"
+                "پہلے مجھے ڈو ناٹ ڈسٹرب کی اجازت دیجیے۔ صفحہ کھول دیا ہے۔",
+                "Pehle Do Not Disturb access allow karna hoga, $sir. Page khol diya hai."
             ))
         }
     }
@@ -433,7 +444,8 @@ class CommandProcessor(private val ctx: Context) {
             return Result(L(
                 "Please allow me to modify system settings first, $sir. I've opened the page.",
                 "पहले मुझे सिस्टम सेटिंग्स बदलने की इजाज़त दीजिए। पेज खोल दिया है।",
-                "پہلے مجھے سسٹم سیٹنگز بدلنے کی اجازت دیجیے۔ صفحہ کھول دیا ہے۔"
+                "پہلے مجھے سسٹم سیٹنگز بدلنے کی اجازت دیجیے۔ صفحہ کھول دیا ہے۔",
+                "Pehle system settings badalne ki ijazat dijiye, $sir. Page khol diya hai."
             ))
         }
         val cr = ctx.contentResolver
@@ -446,7 +458,7 @@ class CommandProcessor(private val ctx: Context) {
         }.coerceIn(5, 255)
         Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS, value)
         val p = value * 100 / 255
-        return Result(L("Brightness at $p percent.", "ब्राइटनेस $p प्रतिशत।", "برائٹنس $p فیصد۔"))
+        return Result(L("Brightness at $p percent.", "ब्राइटनेस $p प्रतिशत।", "برائٹنس $p فیصد۔", "Brightness $p percent par hai."))
     }
 
     // ----- Toggles -----
@@ -469,15 +481,16 @@ class CommandProcessor(private val ctx: Context) {
         val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         if (Build.VERSION.SDK_INT < 29) {
             wm.isWifiEnabled = state == Switch.ON || (state == Switch.TOGGLE && !wm.isWifiEnabled)
-            return Result(if (wm.isWifiEnabled) L("Wi-Fi on.", "वाई-फ़ाई चालू।", "وائی فائی آن۔") else L("Wi-Fi off.", "वाई-फ़ाई बंद।", "وائی فائی بند۔"))
+            return Result(if (wm.isWifiEnabled) L("Wi-Fi on.", "वाई-फ़ाई चालू।", "وائی فائی آن۔", "Wi-Fi on kar diya.") else L("Wi-Fi off.", "वाई-फ़ाई बंद।", "وائی فائی بند۔", "Wi-Fi band kar diya."))
         }
-        if (state == Switch.ON && wm.isWifiEnabled) return Result(L("Wi-Fi is already on, $sir.", "वाई-फ़ाई पहले से चालू है।", "وائی فائی پہلے سے آن ہے۔"))
-        if (state == Switch.OFF && !wm.isWifiEnabled) return Result(L("Wi-Fi is already off, $sir.", "वाई-फ़ाई पहले से बंद है।", "وائی فائی پہلے سے بند ہے۔"))
+        if (state == Switch.ON && wm.isWifiEnabled) return Result(L("Wi-Fi is already on, $sir.", "वाई-फ़ाई पहले से चालू है।", "وائی فائی پہلے سے آن ہے۔", "Wi-Fi pehle se on hai, $sir."))
+        if (state == Switch.OFF && !wm.isWifiEnabled) return Result(L("Wi-Fi is already off, $sir.", "वाई-फ़ाई पहले से बंद है।", "وائی فائی پہلے سے بند ہے۔", "Wi-Fi pehle se band hai, $sir."))
         launch(Intent(Settings.Panel.ACTION_WIFI))
         return Result(L(
             "Android only lets you flip Wi-Fi yourself on this version. Here's the switch, $sir.",
             "इस Android पर वाई-फ़ाई आपको खुद बदलना होगा। स्विच खोल दिया है।",
-            "اس Android پر وائی فائی آپ کو خود بدلنا ہوگا۔ سوئچ کھول دیا ہے۔"
+            "اس Android پر وائی فائی آپ کو خود بدلنا ہوگا۔ سوئچ کھول دیا ہے۔",
+            "Is Android version par Wi-Fi aapko khud badalna hoga. Ye raha switch, $sir."
         ))
     }
 
@@ -485,12 +498,12 @@ class CommandProcessor(private val ctx: Context) {
         val s = a11y
         if (s == null) {
             launch(Intent(fallbackAction))
-            return Result(L("Opening $name settings, $sir.", "$name की सेटिंग खोल रही हूँ।", "$name کی سیٹنگ کھول رہی ہوں۔"))
+            return Result(L("Opening $name settings, $sir.", "$name की सेटिंग खोल रही हूँ।", "$name کی سیٹنگ کھول رہی ہوں۔", "$name settings khol rahi hoon, $sir."))
         }
         s.toggleQuickSetting(labels) { ok ->
             if (!ok) launch(Intent(fallbackAction))
         }
-        return Result(L("Switching $name.", "$name बदल रही हूँ।", "$name بدل رہی ہوں۔"))
+        return Result(L("Switching $name.", "$name बदल रही हूँ।", "$name بدل رہی ہوں۔", "$name badal rahi hoon."))
     }
 
     private fun settingsPage(name: String): Result {
@@ -513,7 +526,7 @@ class CommandProcessor(private val ctx: Context) {
             else -> Settings.ACTION_WIRELESS_SETTINGS
         }
         if (!launch(Intent(action))) launch(Intent(Settings.ACTION_SETTINGS))
-        return Result(L("Opening $name settings.", "$name सेटिंग्स खोल रही हूँ।", "$name سیٹنگز کھول رہی ہوں۔"))
+        return Result(L("Opening $name settings.", "$name सेटिंग्स खोल रही हूँ।", "$name سیٹنگز کھول رہی ہوں۔", "$name settings khol rahi hoon."))
     }
 
     // ----- Alarms, reminders & timers -----
@@ -529,8 +542,9 @@ class CommandProcessor(private val ctx: Context) {
             if (label != null && label != "reminder") L(
                 "I'll remind you to $label at $time, $sir.",
                 "$time बजे याद दिला दूँगी: $label।",
-                "$time بجے یاد دلا دوں گی: $label۔"
-            ) else L("Alarm set for $time, $sir.", "$time बजे का अलार्म लग गया, $sirHi।", "$time بجے کا الارم لگ گیا، $sirUr۔")
+                "$time بجے یاد دلا دوں گی: $label۔",
+                "$time par aapko yaad dila dungi: $label, $sir."
+            ) else L("Alarm set for $time, $sir.", "$time बजे का अलार्म लग गया, $sirHi।", "$time بجے کا الارم لگ گیا، $sirUr۔", "$time ka alarm laga diya, $sir.")
         )
     }
 
@@ -545,8 +559,9 @@ class CommandProcessor(private val ctx: Context) {
             if (label != null && label != "reminder") L(
                 "I'll remind you to $label in $span.",
                 "$span बाद याद दिला दूँगी: $label।",
-                "$span بعد یاد دلا دوں گی: $label۔"
-            ) else L("Timer set for $span.", "$span का टाइमर लग गया।", "$span کا ٹائمر لگ گیا۔")
+                "$span بعد یاد دلا دوں گی: $label۔",
+                "$span baad aapko yaad dila dungi: $label."
+            ) else L("Timer set for $span.", "$span का टाइमर लग गया।", "$span کا ٹائمر لگ گیا۔", "$span ka timer laga diya.")
         )
     }
 
@@ -560,6 +575,12 @@ class CommandProcessor(private val ctx: Context) {
                 if (h > 0) parts.add("$h घंटे")
                 if (m > 0) parts.add("$m मिनट")
                 if (s > 0 || parts.isEmpty()) parts.add("$s सेकंड")
+                return parts.joinToString(" ")
+            }
+            Lang.HINGLISH -> {
+                if (h > 0) parts.add("$h ghante")
+                if (m > 0) parts.add("$m minute")
+                if (s > 0 || parts.isEmpty()) parts.add("$s second")
                 return parts.joinToString(" ")
             }
             "ur" -> {
@@ -605,16 +626,17 @@ class CommandProcessor(private val ctx: Context) {
     private fun notFound(who: String) = Result(L(
         "I couldn't find $who in your contacts, $sir.",
         "कॉन्टैक्ट्स में $who नहीं मिला, $sirHi।",
-        "کانٹیکٹس میں $who نہیں ملا، $sirUr۔"
+        "کانٹیکٹس میں $who نہیں ملا، $sirUr۔",
+        "Contacts mein $who nahi mila, $sir."
     ))
 
     private fun call(who: String): Result {
         if (!granted(Manifest.permission.READ_CONTACTS) && !who.any { it.isDigit() })
-            return Result(L("I need permission to read your contacts first, $sir.", "पहले कॉन्टैक्ट्स की इजाज़त चाहिए।", "پہلے کانٹیکٹس کی اجازت چاہیے۔"))
+            return Result(L("I need permission to read your contacts first, $sir.", "पहले कॉन्टैक्ट्स की इजाज़त चाहिए।", "پہلے کانٹیکٹس کی اجازت چاہیے۔", "Pehle contacts parhne ki permission chahiye, $sir."))
         val (name, number) = resolveNumber(who) ?: return notFound(who)
         val action = if (granted(Manifest.permission.CALL_PHONE)) Intent.ACTION_CALL else Intent.ACTION_DIAL
         launch(Intent(action, Uri.parse("tel:" + Uri.encode(number))))
-        return Result(L("Calling $name.", "$name को कॉल कर रही हूँ।", "$name کو کال کر رہی ہوں۔"))
+        return Result(L("Calling $name.", "$name को कॉल कर रही हूँ।", "$name کو کال کر رہی ہوں۔", "$name ko call kar rahi hoon."))
     }
 
     @Suppress("DEPRECATION")
@@ -624,16 +646,16 @@ class CommandProcessor(private val ctx: Context) {
         if (text.isEmpty()) {
             // No text yet: open the conversation so the user can type it.
             launch(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(number))))
-            return Result(L("Here's your chat with $name. What should I write?", "$name की चैट खोल दी।", "$name کی چیٹ کھول دی۔"))
+            return Result(L("Here's your chat with $name. What should I write?", "$name की चैट खोल दी।", "$name کی چیٹ کھول دی۔", "$name ki chat khol di. Kya likhna hai?"))
         }
         if (!granted(Manifest.permission.SEND_SMS)) {
             launch(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(number))).putExtra("sms_body", text))
-            return Result(L("I've written the message to $name. Just hit send, $sir.", "$name के लिए मैसेज लिख दिया। बस भेज दीजिए।", "$name کے لیے میسج لکھ دیا۔ بس بھیج دیجیے۔"))
+            return Result(L("I've written the message to $name. Just hit send, $sir.", "$name के लिए मैसेज लिख दिया। बस भेज दीजिए।", "$name کے لیے میسج لکھ دیا۔ بس بھیج دیجیے۔", "$name ke liye message likh diya. Bas send daba dijiye, $sir."))
         }
         val manager: SmsManager =
             if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(SmsManager::class.java) else SmsManager.getDefault()
         manager.sendMultipartTextMessage(number, null, manager.divideMessage(text), null, null)
-        return Result(L("Message sent to $name.", "$name को मैसेज भेज दिया।", "$name کو میسج بھیج دیا۔"))
+        return Result(L("Message sent to $name.", "$name को मैसेज भेज दिया।", "$name کو میسج بھیج دیا۔", "$name ko message bhej diya."))
     }
 
     private fun whatsapp(who: String, body: String): Result {
@@ -651,16 +673,17 @@ class CommandProcessor(private val ctx: Context) {
         val text = body.trim().replaceFirstChar { it.uppercase() }
         val query = "phone=$digits" + if (text.isNotEmpty()) "&text=" + Uri.encode(text) else ""
         val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { isInstalled(it) }
-            ?: return Result(L("WhatsApp isn't installed, $sir.", "व्हाट्सएप इंस्टॉल नहीं है।", "واٹس ایپ انسٹال نہیں ہے۔"))
+            ?: return Result(L("WhatsApp isn't installed, $sir.", "व्हाट्सएप इंस्टॉल नहीं है।", "واٹس ایپ انسٹال نہیں ہے۔", "WhatsApp install nahi hai, $sir."))
         // Open the chat inside WhatsApp itself (never the browser).
         val opened = launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?$query")).setPackage(pkg)) ||
             launch(Intent(Intent.ACTION_VIEW, Uri.parse("whatsapp://send?$query")).setPackage(pkg))
-        if (!opened) return Result(L("I couldn't open WhatsApp, $sir.", "व्हाट्सएप नहीं खुला।", "واٹس ایپ نہیں کھلا۔"))
+        if (!opened) return Result(L("I couldn't open WhatsApp, $sir.", "व्हाट्सएप नहीं खुला।", "واٹس ایپ نہیں کھلا۔", "WhatsApp nahi khul saka, $sir."))
         if (text.isEmpty()) {
             return Result(L(
                 "Here's your WhatsApp chat with $name. Tell me what to write, or type it there.",
                 "$name की व्हाट्सएप चैट खोल दी। बताइए क्या लिखना है।",
-                "$name کی واٹس ایپ چیٹ کھول دی۔ بتائیے کیا لکھنا ہے۔"
+                "$name کی واٹس ایپ چیٹ کھول دی۔ بتائیے کیا لکھنا ہے۔",
+                "$name ki WhatsApp chat khol di. Batayiye kya likhna hai, ya wahan khud likh dijiye."
             ))
         }
         val s = a11y
@@ -668,12 +691,13 @@ class CommandProcessor(private val ctx: Context) {
             s.sendWhatsapp(pkg, text, { sent ->
                 ChatStore.add(ctx, ChatStore.Role.NOTE, if (sent) "WhatsApp message sent to $name" else "Couldn't press WhatsApp's send button — please tap send")
             })
-            Result(L("Sending your WhatsApp message to $name.", "$name को व्हाट्सएप मैसेज भेज रही हूँ।", "$name کو واٹس ایپ میسج بھیج رہی ہوں۔"))
+            Result(L("Sending your WhatsApp message to $name.", "$name को व्हाट्सएप मैसेज भेज रही हूँ।", "$name کو واٹس ایپ میسج بھیج رہی ہوں۔", "$name ko WhatsApp message bhej rahi hoon."))
         } else {
             Result(L(
                 "Message ready for $name. Turn on Voxa's accessibility access so I can press send myself.",
                 "$name के लिए मैसेज तैयार है। खुद भेजने के लिए Voxa की Accessibility चालू कीजिए।",
-                "$name کے لیے میسج تیار ہے۔ خود بھیجنے کے لیے Voxa کی ایکسیسبلٹی آن کیجیے۔"
+                "$name کے لیے میسج تیار ہے۔ خود بھیجنے کے لیے Voxa کی ایکسیسبلٹی آن کیجیے۔",
+                "$name ke liye message tayyar hai. Khud send karne ke liye Voxa ki accessibility on kar dijiye."
             ))
         }
     }
@@ -713,16 +737,17 @@ class CommandProcessor(private val ctx: Context) {
         // A results URL loads straight away; the "web search" intent only fills the box on some phones.
         val ok = launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode(query)))) ||
             launch(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query))
-        if (!ok) return Result(L("I couldn't open a browser, $sir.", "ब्राउज़र नहीं खुला।", "براؤزر نہیں کھلا۔"))
+        if (!ok) return Result(L("I couldn't open a browser, $sir.", "ब्राउज़र नहीं खुला।", "براؤزر نہیں کھلا۔", "Browser nahi khul saka, $sir."))
         // AI is switched off but a key exists: say how to get a direct answer instead.
         if (!hasBrain && (prefs.groqKey.isNotBlank() || prefs.apiKey.isNotBlank())) {
             return Result(L(
                 "AI is off, so here are Google's results. Turn on the AI chip for a direct answer.",
                 "AI बंद है, इसलिए गूगल के नतीजे खोल दिए। सीधे जवाब के लिए AI चालू कर दीजिए।",
-                "اے آئی بند ہے، اس لیے گوگل کے نتائج کھول دیے۔ سیدھے جواب کے لیے اے آئی آن کر دیجیے۔"
+                "اے آئی بند ہے، اس لیے گوگل کے نتائج کھول دیے۔ سیدھے جواب کے لیے اے آئی آن کر دیجیے۔",
+                "AI band hai, is liye Google ke results khol diye. Seedha jawab chahiye to AI chip on kar dijiye."
             ))
         }
-        return Result(L("Here's what Google has on that.", "गूगल के नतीजे खोल दिए।", "گوگل کے نتائج کھول دیے۔"))
+        return Result(L("Here's what Google has on that.", "गूगल के नतीजे खोल दिए।", "گوگل کے نتائج کھول دیے۔", "Google ke results khol diye."))
     }
 
     private fun youtube(query: String): Result {
@@ -730,8 +755,8 @@ class CommandProcessor(private val ctx: Context) {
         val ok = launch(yt) ||
             launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query))))
         return Result(
-            if (ok) L("Here's $query on YouTube.", "यूट्यूब पर $query।", "یوٹیوب پر $query۔")
-            else L("I couldn't open YouTube, $sir.", "यूट्यूब नहीं खुला।", "یوٹیوب نہیں کھلا۔")
+            if (ok) L("Here's $query on YouTube.", "यूट्यूब पर $query।", "یوٹیوب پر $query۔", "YouTube par $query khol diya.")
+            else L("I couldn't open YouTube, $sir.", "यूट्यूब नहीं खुला।", "یوٹیوب نہیں کھلا۔", "YouTube nahi khul saka, $sir.")
         )
     }
 
@@ -739,16 +764,16 @@ class CommandProcessor(private val ctx: Context) {
         val ok = launch(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=" + Uri.encode(place)))) ||
             launch(Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(place))))
         return Result(
-            if (ok) L("Starting navigation to $place.", "$place का रास्ता शुरू कर रही हूँ।", "$place کا راستہ شروع کر رہی ہوں۔")
-            else L("I couldn't find a maps app, $sir.", "मैप्स ऐप नहीं मिली।", "میپس ایپ نہیں ملی۔")
+            if (ok) L("Starting navigation to $place.", "$place का रास्ता शुरू कर रही हूँ।", "$place کا راستہ شروع کر رہی ہوں۔", "$place ke liye navigation shuru kar di.")
+            else L("I couldn't find a maps app, $sir.", "मैप्स ऐप नहीं मिली।", "میپس ایپ نہیں ملی۔", "Koi maps app nahi mili, $sir.")
         )
     }
 
     private fun map(place: String): Result {
         val ok = launch(Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(place))))
         return Result(
-            if (ok) L("Here's $place on the map.", "नक्शे पर $place।", "نقشے پر $place۔")
-            else L("I couldn't find a maps app, $sir.", "मैप्स ऐप नहीं मिली।", "میپس ایپ نہیں ملی۔")
+            if (ok) L("Here's $place on the map.", "नक्शे पर $place।", "نقشے پر $place۔", "Map par $place khol diya.")
+            else L("I couldn't find a maps app, $sir.", "मैप्स ऐप नहीं मिली।", "میپس ایپ نہیں ملی۔", "Koi maps app nahi mili, $sir.")
         )
     }
 
@@ -760,8 +785,8 @@ class CommandProcessor(private val ctx: Context) {
             intent.putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
         }
         return Result(
-            if (launch(intent)) L("Camera ready. Smile, $sir.", "कैमरा तैयार है। मुस्कुराइए।", "کیمرا تیار ہے۔ مسکرائیے۔")
-            else L("I couldn't open the camera, $sir.", "कैमरा नहीं खुला।", "کیمرا نہیں کھلا۔")
+            if (launch(intent)) L("Camera ready. Smile, $sir.", "कैमरा तैयार है। मुस्कुराइए।", "کیمرا تیار ہے۔ مسکرائیے۔", "Camera tayyar hai. Smile kijiye, $sir.")
+            else L("I couldn't open the camera, $sir.", "कैमरा नहीं खुला।", "کیمرا نہیں کھلا۔", "Camera nahi khul saka, $sir.")
         )
     }
 
@@ -794,31 +819,32 @@ class CommandProcessor(private val ctx: Context) {
 
     private fun launchApp(label: String, pkg: String): Result {
         val intent = ctx.packageManager.getLaunchIntentForPackage(pkg)
-            ?: return Result(L("I can't open $label, $sir.", "$label नहीं खुल रही।", "$label نہیں کھل رہی۔"))
-        return if (launch(intent)) Result(L("Opening $label.", "$label खोल रही हूँ।", "$label کھول رہی ہوں۔"))
-        else Result(L("I can't open $label, $sir.", "$label नहीं खुल रही।", "$label نہیں کھل رہی۔"))
+            ?: return Result(L("I can't open $label, $sir.", "$label नहीं खुल रही।", "$label نہیں کھل رہی۔", "$label nahi khul saka, $sir."))
+        return if (launch(intent)) Result(L("Opening $label.", "$label खोल रही हूँ।", "$label کھول رہی ہوں۔", "$label khol rahi hoon."))
+        else Result(L("I can't open $label, $sir.", "$label नहीं खुल रही।", "$label نہیں کھل رہی۔", "$label nahi khul saka, $sir."))
     }
 
     private fun openApp(name: String): Result {
         when (Translit.knownApp(name) ?: name) {
             "settings", "setting" -> {
                 launch(Intent(Settings.ACTION_SETTINGS))
-                return Result(L("Opening settings.", "सेटिंग्स खोल रही हूँ।", "سیٹنگز کھول رہی ہوں۔"))
+                return Result(L("Opening settings.", "सेटिंग्स खोल रही हूँ।", "سیٹنگز کھول رہی ہوں۔", "Settings khol rahi hoon."))
             }
             "camera" -> return camera(false)
             "dialer", "phone", "dial pad", "dialpad" -> {
                 launch(Intent(Intent.ACTION_DIAL))
-                return Result(L("Opening the dialer.", "डायलर खोल रही हूँ।", "ڈائلر کھول رہی ہوں۔"))
+                return Result(L("Opening the dialer.", "डायलर खोल रही हूँ।", "ڈائلر کھول رہی ہوں۔", "Dialer khol rahi hoon."))
             }
             "browser", "internet", "chrome" -> if (findApp(name) == null) {
                 launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")))
-                return Result(L("Opening the browser.", "ब्राउज़र खोल रही हूँ।", "براؤزر کھول رہی ہوں۔"))
+                return Result(L("Opening the browser.", "ब्राउज़र खोल रही हूँ।", "براؤزر کھول رہی ہوں۔", "Browser khol rahi hoon."))
             }
         }
         val app = findApp(name) ?: return Result(L(
             "I couldn't find an app called $name, $sir.",
             "$name नाम की कोई ऐप नहीं मिली।",
-            "$name نام کی کوئی ایپ نہیں ملی۔"
+            "$name نام کی کوئی ایپ نہیں ملی۔",
+            "$name naam ki koi app nahi mili, $sir."
         ))
         return launchApp(app.first, app.second)
     }
@@ -837,6 +863,10 @@ class CommandProcessor(private val ctx: Context) {
             "remember things, set reminders, alarms and timers, control the flashlight, volume, brightness and quick settings, " +
             "play YouTube, navigate, take screenshots, lock the phone, and tap, scroll and type on screen. " +
             "In English, Hindi or Urdu. With an AI key I can also answer any question and see your screen."
+        private const val HELP_RM = "Main apps khol sakti hoon, call aur SMS kar sakti hoon, WhatsApp message bhej sakti hoon, notifications parh sakti hoon, " +
+            "baatein yaad rakh sakti hoon, reminder, alarm aur timer laga sakti hoon, torch, awaaz, brightness aur quick settings badal sakti hoon, " +
+            "YouTube chala sakti hoon, rasta dikha sakti hoon, screenshot le sakti hoon, phone lock kar sakti hoon, aur screen par tap, scroll aur type kar sakti hoon. " +
+            "Aap Urdu, Hindi ya English mein bol sakte hain. AI key ke saath main har sawal ka jawab bhi de sakti hoon aur aapki screen bhi dekh sakti hoon."
         private const val HELP_HI = "मैं ऐप खोल सकती हूँ, कॉल और मैसेज कर सकती हूँ, व्हाट्सएप भेज सकती हूँ, नोटिफिकेशन पढ़ सकती हूँ, " +
             "बातें याद रख सकती हूँ, अलार्म, टाइमर और रिमाइंडर लगा सकती हूँ, टॉर्च, आवाज़, ब्राइटनेस और ब्लूटूथ बदल सकती हूँ, " +
             "यूट्यूब चला सकती हूँ, रास्ता दिखा सकती हूँ, स्क्रीनशॉट ले सकती हूँ और फ़ोन लॉक कर सकती हूँ। बस बोलिए।"

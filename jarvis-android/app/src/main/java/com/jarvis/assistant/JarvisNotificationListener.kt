@@ -65,6 +65,7 @@ class JarvisNotificationListener : NotificationListenerService() {
             val line = when (Lang.mode(prefs)) {
                 "hi" -> if (title.isNotBlank()) "${item.app} पर $title का मैसेज: $body" else "${item.app} पर नया मैसेज: $body"
                 "ur" -> if (title.isNotBlank()) "${item.app} پر $title کا میسج: $body" else "${item.app} پر نیا میسج: $body"
+                Lang.HINGLISH -> if (title.isNotBlank()) "${item.app} par $title ka message: $body" else "${item.app} par naya message: $body"
                 else -> if (title.isNotBlank()) "New ${item.app} message from $title. $body" else "New ${item.app} message. $body"
             }
             s.speak(line)
