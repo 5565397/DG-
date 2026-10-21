@@ -42,6 +42,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("lock_window", true)
         set(v) = sp.edit().putBoolean("lock_window", v).apply()
 
+    /** Pause Voxa's phone control when a banking app opens (banks block accessibility apps). */
+    var bankingPause: Boolean
+        get() = sp.getBoolean("banking_pause", true)
+        set(v) = sp.edit().putBoolean("banking_pause", v).apply()
+
     var countryCode: String
         get() = sp.getString("country_code", "") ?: ""
         set(v) = sp.edit().putString("country_code", v).apply()

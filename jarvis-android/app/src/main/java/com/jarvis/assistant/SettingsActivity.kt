@@ -245,6 +245,10 @@ class SettingsActivity : AppCompatActivity() {
         row(card, "Smart button & power button", "Make Voxa the default assistant (Setup above). Then set your phone's smart / assistant key, or holding the power button, to \"Assistant\" — or pick the app \"Talk to Voxa\" for the key. There's also a Voxa tile in quick settings.") {
             Setup.open(this, Setup.Step.ASSISTANT)
         }
+        switchRow(card, "Banking mode", "When a banking or payment app opens, Voxa pauses phone control so the bank app works. A notification lets you turn it back on.", prefs.bankingPause) { on ->
+            prefs.bankingPause = on
+            true
+        }
         switchRow(card, "Voxa window on the lock screen", "Say \"Voxa\" and her window opens over any app or the lock screen. Personal things wait for you to unlock.", prefs.lockWindow) { on ->
             prefs.lockWindow = on
             true
@@ -308,7 +312,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Voxa 4.2"
+        tv.text = "Voxa 4.3"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER

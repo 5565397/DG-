@@ -28,6 +28,20 @@ class JarvisAccessibilityService : AccessibilityService() {
     companion object {
         @Volatile var instance: JarvisAccessibilityService? = null
             private set
+
+        private const val BANKING_CHANNEL = "voxa_banking"
+        private const val BANKING_NOTIF_ID = 10
+        private val BANK_WORDS = listOf(
+            "bank", "banking", "wallet", "paypal", "upi", "paytm", "phonepe", "easypaisa", "jazzcash", "sadapay", "nayapay",
+            "meezan", "hbl", "ubl", "mcb", "alfalah", "askari", "faysal", "allied", "bop", "raast", "konnect", "upaisa", "finance"
+        )
+
+        /** Package names of banking and payment apps ("com.hbl.android.hblmobilebanking", "pk.com.telenor.phoenix"…). */
+        fun isBankingApp(pkg: String): Boolean {
+            if (pkg == "pk.com.telenor.phoenix" || pkg == "com.techlogix.mobilinkcustomer") return true
+            val parts = pkg.lowercase(Locale.ROOT).split('.', '_')
+            return parts.any { part -> BANK_WORDS.any { w -> part == w || (w.length >= 4 && part.contains(w)) } }
+        }
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -47,7 +61,42 @@ class JarvisAccessibilityService : AccessibilityService() {
         }
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString() ?: return
+        // Banking apps refuse to run while an accessibility service from outside the Play Store is on.
+        if (Prefs(this).bankingPause && isBankingApp(pkg)) pauseForBanking(pkg)
+    }
+
+    private fun pauseForBanking(pkg: String) {
+        val label = try {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+        } catch (e: Exception) {
+            "your banking app"
+        }
+        val nm = getSystemService(android.app.NotificationManager::class.java)
+        if (nm.getNotificationChannel(BANKING_CHANNEL) == null) {
+            nm.createNotificationChannel(android.app.NotificationChannel(BANKING_CHANNEL, "Banking mode", android.app.NotificationManager.IMPORTANCE_DEFAULT))
+        }
+        val turnBackOn = android.app.PendingIntent.getActivity(
+            this, 5,
+            android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        nm.notify(
+            BANKING_NOTIF_ID,
+            androidx.core.app.NotificationCompat.Builder(this, BANKING_CHANNEL)
+                .setSmallIcon(R.drawable.ic_jarvis)
+                .setContentTitle("Voxa phone control paused")
+                .setContentText("So $label can open. Tap here afterwards to turn \"Voxa phone control\" back on.")
+                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText("So $label can open. When you're done banking, tap here and turn \"Voxa phone control\" back on."))
+                .setContentIntent(turnBackOn)
+                .setAutoCancel(true)
+                .build()
+        )
+        instance = null
+        disableSelf()
+    }
 
     override fun onInterrupt() {}
 
@@ -238,14 +287,17 @@ class JarvisAccessibilityService : AccessibilityService() {
      * didn't, and checks the box empties — tapping again by position if the first press didn't take.
      * [onDone] gets true when the message left the box.
      */
-    fun sendWhatsapp(pkg: String, text: String, onDone: (Boolean) -> Unit, timeoutMs: Long = 20000) {
+    fun sendWhatsapp(pkg: String, text: String, onDone: (Boolean) -> Unit, timeoutMs: Long = 20000) = sendMessage(pkg, text, onDone, timeoutMs)
+
+    /** Same as [sendWhatsapp], for any messaging app ([pkg] = WhatsApp, the SMS app, …). */
+    fun sendMessage(pkg: String, text: String, onDone: (Boolean) -> Unit, timeoutMs: Long = 20000) {
         val start = SystemClock.uptimeMillis()
         val deadline = start + timeoutMs
         var pressed = 0
         val task = object : Runnable {
             override fun run() {
                 val root = roots().firstOrNull { it.packageName?.toString() == pkg }
-                val entry = root?.findAccessibilityNodeInfosByViewId("$pkg:id/entry")?.firstOrNull()
+                val entry = root?.findAccessibilityNodeInfosByViewId("$pkg:id/entry")?.firstOrNull() ?: root?.let { firstEditable(it) }
                 if (root != null && entry != null) {
                     val current = entry.text?.toString().orEmpty()
                     val hint = entry.hintText?.toString().orEmpty()
@@ -272,6 +324,19 @@ class JarvisAccessibilityService : AccessibilityService() {
         main.postDelayed(task, 1200)
     }
 
+    private fun firstEditable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var found: AccessibilityNodeInfo? = null
+        walk(root) { n ->
+            if (n.isEditable && n.isVisibleToUser) {
+                found = n
+                true
+            } else {
+                false
+            }
+        }
+        return found
+    }
+
     private val SEND_LABELS = listOf("send", "بھیجیں", "بھیجو", "ارسال", "भेजें", "भेजो", "enviar", "envoyer", "senden", "invia", "gönder")
 
     private fun sendButton(root: AccessibilityNodeInfo, pkg: String): AccessibilityNodeInfo? {
@@ -282,7 +347,9 @@ class JarvisAccessibilityService : AccessibilityService() {
         walk(root) { n ->
             val id = n.viewIdResourceName.orEmpty()
             val desc = n.contentDescription?.toString()?.lowercase(Locale.ROOT)?.trim().orEmpty()
-            if (n.isVisibleToUser && (id.endsWith("/send") || desc in SEND_LABELS)) {
+            val looksLikeSend = id.endsWith("/send") || Regex("send_?(message_)?button|/send_").containsMatchIn(id) ||
+                desc in SEND_LABELS || desc.startsWith("send ")
+            if (n.isVisibleToUser && looksLikeSend) {
                 found = n
                 true
             } else {

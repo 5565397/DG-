@@ -73,4 +73,14 @@ class LockScreenAndNewsTest {
         assertTrue(en("write an email to my boss about leave") !is Action.AppNews)
         assertNull(NotificationStore.packagesFor("hello there"))
     }
+
+    @Test fun bankingAppsAreRecognised() {
+        assertTrue(JarvisAccessibilityService.isBankingApp("com.hbl.android.hblmobilebanking"))
+        assertTrue(JarvisAccessibilityService.isBankingApp("com.meezanbank.meezan"))
+        assertTrue(JarvisAccessibilityService.isBankingApp("pk.com.telenor.phoenix"))
+        assertTrue(JarvisAccessibilityService.isBankingApp("com.techlogix.mobilinkcustomer"))
+        assertTrue(!JarvisAccessibilityService.isBankingApp("com.whatsapp"))
+        assertTrue(!JarvisAccessibilityService.isBankingApp("com.google.android.youtube"))
+        assertTrue(!JarvisAccessibilityService.isBankingApp("com.android.chrome"))
+    }
 }

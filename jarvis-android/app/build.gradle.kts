@@ -11,13 +11,28 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "4.2"
+        versionCode = 14
+        versionName = "4.3"
+    }
+
+    // One fixed signing key for every build, so each new Voxa installs as an update of the last one
+    // (CI restores it from the cache or the VOXA_KEYSTORE_B64 secret; see the workflow).
+    val voxaKeystore = rootProject.file("voxa.keystore")
+    signingConfigs {
+        create("voxa") {
+            // An unset GitHub secret arrives as an empty string, so treat blank like missing.
+            fun env(name: String) = System.getenv(name)?.takeUnless { it.isBlank() }
+            storeFile = voxaKeystore
+            storePassword = env("VOXA_KEYSTORE_PASSWORD") ?: "voxa-android"
+            keyAlias = env("VOXA_KEY_ALIAS") ?: "voxa"
+            keyPassword = env("VOXA_KEY_PASSWORD") ?: env("VOXA_KEYSTORE_PASSWORD") ?: "voxa-android"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = if (voxaKeystore.exists()) signingConfigs.getByName("voxa") else signingConfigs.getByName("debug")
         }
     }
 

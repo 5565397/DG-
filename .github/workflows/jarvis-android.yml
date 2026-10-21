@@ -28,14 +28,38 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      # Every Voxa build must be signed with the same key, or phones refuse to install it as an
+      # update. Use the VOXA_KEYSTORE_B64 secret if it exists, otherwise a key kept in the CI cache.
+      - name: Restore signing key from cache
+        id: keycache
+        uses: actions/cache@v4
+        with:
+          path: jarvis-android/voxa.keystore
+          key: voxa-keystore-v1
+
+      - name: Prepare signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.VOXA_KEYSTORE_B64 }}
+          VOXA_KEYSTORE_PASSWORD: ${{ secrets.VOXA_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > voxa.keystore
+          elif [ ! -f voxa.keystore ]; then
+            keytool -genkeypair -v -keystore voxa.keystore -alias voxa -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "${VOXA_KEYSTORE_PASSWORD:-voxa-android}" -keypass "${VOXA_KEYSTORE_PASSWORD:-voxa-android}" \
+              -dname "CN=Voxa, O=Voxa, C=PK"
+          fi
+
       - name: Run command tests
         run: gradle testDebugUnitTest
 
-      - name: Build debug APK
-        run: gradle assembleDebug
+      - name: Build release APK
+        env:
+          VOXA_KEYSTORE_PASSWORD: ${{ secrets.VOXA_KEYSTORE_PASSWORD }}
+        run: gradle assembleRelease
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Voxa.apk
+        run: cp app/build/outputs/apk/release/app-release.apk Voxa.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

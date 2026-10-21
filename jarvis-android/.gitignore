@@ -3,3 +3,6 @@ build/
 local.properties
 .idea/
 *.iml
+# Signing key: never commit it (it lives in the CI cache or a secret).
+*.keystore
+*.jks

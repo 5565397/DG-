@@ -17,7 +17,7 @@ import androidx.core.content.ContextCompat
 object Setup {
 
     enum class Step(val title: String, val subtitle: String) {
-        PERMISSIONS("Microphone, contacts, calls, SMS & calendar", "So Voxa can hear you, reach people and read your schedule"),
+        PERMISSIONS("Microphone, contacts, calls & calendar", "So Voxa can hear you, reach people and read your schedule"),
         PHONE_CONTROL("Phone control", "Tap, scroll, type, screenshots, screen vision"),
         NOTIFICATIONS("Notification access", "Read and announce your messages"),
         OVERLAY("Display over other apps", "Voxa's window over apps and the lock screen"),
@@ -32,7 +32,6 @@ object Setup {
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.CALL_PHONE,
-            Manifest.permission.SEND_SMS,
             Manifest.permission.READ_CALENDAR
         )
         if (Build.VERSION.SDK_INT >= 33) list.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -67,7 +66,8 @@ object Setup {
             Step.NOTIFICATIONS -> Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
             Step.OVERLAY -> Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg)
             Step.BRIGHTNESS -> Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, pkg)
-            Step.BACKGROUND -> Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg)
+            // The settings list, not the one-tap prompt: that prompt needs a permission Android treats as risky.
+            Step.BACKGROUND -> Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             Step.ASSISTANT -> Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
             Step.LOCK_WINDOW -> if (Build.VERSION.SDK_INT >= 34) Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg)
                 else Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg)

@@ -20,7 +20,6 @@ import android.provider.AlarmClock
 import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.provider.Settings
-import android.telephony.SmsManager
 import android.view.KeyEvent
 import androidx.core.content.ContextCompat
 import com.jarvis.assistant.CommandParser.Action
@@ -799,14 +798,18 @@ class CommandProcessor(private val ctx: Context) {
             launch(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(number))))
             return Result(L("Here's your chat with $name. What should I write?", "$name की चैट खोल दी।", "$name کی چیٹ کھول دی۔", "$name ki chat khol di. Kya likhna hai?"))
         }
-        if (!granted(Manifest.permission.SEND_SMS)) {
-            launch(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(number))).putExtra("sms_body", text))
+        // Voxa doesn't send SMS by itself (that permission makes Android flag the app as unsafe):
+        // it opens your messages app with the text filled in and presses send there.
+        launch(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(number))).putExtra("sms_body", text))
+        val smsApp = android.provider.Telephony.Sms.getDefaultSmsPackage(ctx)
+        val s = a11y
+        if (s == null || smsApp == null) {
             return Result(L("I've written the message to $name. Just hit send, $sir.", "$name के लिए मैसेज लिख दिया। बस भेज दीजिए।", "$name کے لیے میسج لکھ دیا۔ بس بھیج دیجیے۔", "$name ke liye message likh diya. Bas send daba dijiye, $sir."))
         }
-        val manager: SmsManager =
-            if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(SmsManager::class.java) else SmsManager.getDefault()
-        manager.sendMultipartTextMessage(number, null, manager.divideMessage(text), null, null)
-        return Result(L("Message sent to $name.", "$name को मैसेज भेज दिया।", "$name کو میسج بھیج دیا۔", "$name ko message bhej diya."))
+        s.sendMessage(smsApp, text, { sent ->
+            ChatStore.add(ctx, ChatStore.Role.NOTE, if (sent) "Message sent to $name" else "Couldn't press send in your messages app — please tap send")
+        })
+        return Result(L("Sending your message to $name.", "$name को मैसेज भेज रही हूँ।", "$name کو میسج بھیج رہی ہوں۔", "$name ko message bhej rahi hoon."))
     }
 
     private fun whatsapp(who: String, body: String): Result {
