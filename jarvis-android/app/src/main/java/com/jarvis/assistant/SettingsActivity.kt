@@ -79,6 +79,8 @@ class SettingsActivity : AppCompatActivity() {
                 else {
                     if (step == Setup.Step.PHONE_CONTROL) toast("Find \"Voxa phone control\" and turn it on.")
                     if (step == Setup.Step.NOTIFICATIONS) toast("Turn on \"Voxa notifications\".")
+                    if (step == Setup.Step.ASSISTANT) toast("Tap \"Digital assistant app\" and choose Voxa.")
+                    if (step == Setup.Step.LOCK_WINDOW) toast("Allow Voxa to show full-screen.")
                     Setup.open(this, step)
                 }
             }
@@ -240,6 +242,9 @@ class SettingsActivity : AppCompatActivity() {
                 rebuild()
             }
         }
+        row(card, "Smart button & power button", "Make Voxa the default assistant (Setup above). Then set your phone's smart / assistant key, or holding the power button, to \"Assistant\" — or pick the app \"Talk to Voxa\" for the key. There's also a Voxa tile in quick settings.") {
+            Setup.open(this, Setup.Step.ASSISTANT)
+        }
         switchRow(card, "Voxa window on the lock screen", "Say \"Voxa\" and her window opens over any app or the lock screen. Personal things wait for you to unlock.", prefs.lockWindow) { on ->
             prefs.lockWindow = on
             true
@@ -303,7 +308,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Voxa 4.0"
+        tv.text = "Voxa 4.1"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER

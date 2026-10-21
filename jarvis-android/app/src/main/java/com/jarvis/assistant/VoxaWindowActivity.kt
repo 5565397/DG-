@@ -29,6 +29,9 @@ class VoxaWindowActivity : AppCompatActivity(), JarvisBus.Listener {
 
         /** Messages from just before the window opened that are still worth showing. */
         private const val RECENT_MS = 3 * 60_000L
+
+        /** Start listening as soon as the window opens (assistant button, smart key, tile, shortcut). */
+        const val EXTRA_LISTEN = "listen"
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -81,6 +84,27 @@ class VoxaWindowActivity : AppCompatActivity(), JarvisBus.Listener {
         open = true
         JarvisBus.register(this)
         renderChat()
+        listenIfAsked(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        main.removeCallbacksAndMessages(null)
+        listenIfAsked(intent)
+    }
+
+    /** Opened by a button rather than by the wake word: nobody is listening yet, so start. */
+    private fun listenIfAsked(intent: Intent?) {
+        getSystemService(android.app.NotificationManager::class.java)?.cancel(JarvisService.WINDOW_NOTIF_ID)
+        val action = intent?.action
+        val asked = intent?.getBooleanExtra(EXTRA_LISTEN, false) == true ||
+            action == Intent.ACTION_MAIN || action == Intent.ACTION_ASSIST || action == Intent.ACTION_VOICE_COMMAND
+        if (asked && !Setup.hasMic(this)) {
+            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            finish()
+            return
+        }
+        if (asked) service(JarvisService.ACTION_LISTEN_ONCE)
     }
 
     override fun onResume() {

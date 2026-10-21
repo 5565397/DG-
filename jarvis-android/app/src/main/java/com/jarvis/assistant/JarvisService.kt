@@ -56,6 +56,8 @@ class JarvisService : Service(), RecognitionListener {
         /** After "Voxa", keep listening for more commands without the wake word for this long. */
         private const val ACTIVE_MS = 60_000L
         private const val WAKE_NOTIF_ID = 8
+        const val WINDOW_NOTIF_ID = 9
+        private const val WINDOW_CHANNEL_ID = "voxa_window"
 
         @Volatile var isRunning = false
             private set
@@ -97,6 +99,8 @@ class JarvisService : Service(), RecognitionListener {
     /** The user's latest words, so AI-derived commands keep details like "WhatsApp". */
     private var lastUserText = ""
     private var detectedTag: String? = null
+    /** Keeps the CPU running while the screen is off, so "Voxa" is still heard on the lock screen. */
+    private var cpuLock: android.os.PowerManager.WakeLock? = null
     /** Woken with "Voxa": until this time, commands don't need the wake word. */
     private var activeUntil = 0L
 
@@ -140,6 +144,7 @@ class JarvisService : Service(), RecognitionListener {
             awaitingCommand = false
             goToSleep()
             stopListening()
+            holdCpu(false)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -155,6 +160,7 @@ class JarvisService : Service(), RecognitionListener {
                 prefs.wakeEnabled = true
                 getSystemService(NotificationManager::class.java).cancel(WAKE_NOTIF_ID)
                 wakeMode = true
+                holdCpu(true)
                 awaitingCommand = false
                 micPaused = false
                 if (!busy) restartListening()
@@ -208,6 +214,7 @@ class JarvisService : Service(), RecognitionListener {
     }
 
     override fun onDestroy() {
+        holdCpu(false)
         isRunning = false
         wakeMode = false
         main.removeCallbacksAndMessages(null)
@@ -271,6 +278,8 @@ class JarvisService : Service(), RecognitionListener {
             return
         }
         interrupt()
+        // Opened from Voxa's window (assistant button, smart key, tile): a conversation, like after "Voxa".
+        if (VoxaWindowActivity.open) activeUntil = System.currentTimeMillis() + ACTIVE_MS
         awaitingCommand = true
         quietFollowUp = false
         micPaused = false
@@ -323,7 +332,7 @@ class JarvisService : Service(), RecognitionListener {
 
     private fun startListening() {
         if (listening || busy) return
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+        if (!Recognizers.available(this)) {
             JarvisBus.state(JarvisBus.State.IDLE, "Speech recognition isn't available. Install or update the Google app.")
             return
         }
@@ -332,7 +341,7 @@ class JarvisService : Service(), RecognitionListener {
             pauseForMic()
             return
         }
-        val rec = recognizer ?: SpeechRecognizer.createSpeechRecognizer(this).also {
+        val rec = recognizer ?: Recognizers.create(this).also {
             it.setRecognitionListener(this)
             recognizer = it
         }
@@ -422,7 +431,7 @@ class JarvisService : Service(), RecognitionListener {
     /** Continue whatever mode we're in after speaking / acting. */
     private fun resume() {
         // Still in a conversation started with "Voxa": listen for the next command, no wake word needed.
-        if (wakeMode && !awaitingCommand && isActive() && !lastInputTyped) {
+        if ((wakeMode || VoxaWindowActivity.open) && !awaitingCommand && isActive() && !lastInputTyped) {
             awaitingCommand = true
             quietFollowUp = true
         }
@@ -679,14 +688,66 @@ class JarvisService : Service(), RecognitionListener {
         JarvisBus.sleep()
     }
 
+    private fun holdCpu(on: Boolean) {
+        if (on) {
+            if (cpuLock?.isHeld == true) return
+            cpuLock = getSystemService(android.os.PowerManager::class.java)
+                ?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Voxa:wakeword")
+                ?.apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+        } else {
+            try {
+                cpuLock?.takeIf { it.isHeld }?.release()
+            } catch (_: Exception) {
+            }
+            cpuLock = null
+        }
+    }
+
     private fun showWindow() {
         if (!prefs.lockWindow || MainActivity.visible || VoxaWindowActivity.open) return
         val intent = Intent(this, VoxaWindowActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+        // On the lock screen or with the screen off, Android shows screens through a full-screen
+        // notification (like an alarm or a call); the window cancels it as soon as it opens.
+        val screenOff = getSystemService(android.os.PowerManager::class.java)?.isInteractive == false
+        if (lockedNow() || screenOff) postWindowNotification(intent)
         // Android lets the bound phone-control service open screens from the background.
         val starter: android.content.Context = JarvisAccessibilityService.instance ?: this
         try {
             starter.startActivity(intent)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun postWindowNotification(intent: Intent) {
+        val nm = getSystemService(NotificationManager::class.java)
+        if (nm.getNotificationChannel(WINDOW_CHANNEL_ID) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(WINDOW_CHANNEL_ID, "Voxa window", NotificationManager.IMPORTANCE_HIGH).apply {
+                    setSound(null, null)
+                    enableVibration(false)
+                }
+            )
+        }
+        val pi = PendingIntent.getActivity(this, 3, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        try {
+            nm.notify(
+                WINDOW_NOTIF_ID,
+                NotificationCompat.Builder(this, WINDOW_CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_jarvis)
+                    .setContentTitle("Voxa")
+                    .setContentText("Listening…")
+                    .setPriority(NotificationCompat.PRIORITY_MAX)
+                    .setCategory(NotificationCompat.CATEGORY_CALL)
+                    .setFullScreenIntent(pi, true)
+                    .setContentIntent(pi)
+                    .setAutoCancel(true)
+                    .setTimeoutAfter(60_000)
+                    .build()
+            )
         } catch (_: Exception) {
         }
     }
@@ -721,6 +782,7 @@ class JarvisService : Service(), RecognitionListener {
             }
             CommandProcessor.Control.TURN_OFF -> {
                 wakeMode = false
+                holdCpu(false)
                 prefs.wakeEnabled = false
                 awaitingCommand = false
                 goToSleep()

@@ -22,7 +22,9 @@ object Setup {
         NOTIFICATIONS("Notification access", "Read and announce your messages"),
         OVERLAY("Display over other apps", "Voxa's window over apps and the lock screen"),
         BRIGHTNESS("Modify system settings", "Brightness control"),
-        BACKGROUND("Run in the background", "Keeps the wake word alive")
+        BACKGROUND("Run in the background", "Keeps the wake word alive"),
+        ASSISTANT("Default assistant", "Power / home long-press and the smart key open Voxa, even when locked"),
+        LOCK_WINDOW("Show on the lock screen", "Lets Voxa's window appear over the lock screen")
     }
 
     fun runtimePermissions(): Array<String> {
@@ -49,6 +51,9 @@ object Setup {
         Step.OVERLAY -> Settings.canDrawOverlays(context)
         Step.BRIGHTNESS -> Settings.System.canWrite(context)
         Step.BACKGROUND -> context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+        Step.ASSISTANT -> Recognizers.isDefaultAssistant(context)
+        Step.LOCK_WINDOW -> Build.VERSION.SDK_INT < 34 ||
+            context.getSystemService(android.app.NotificationManager::class.java).canUseFullScreenIntent()
     }
 
     fun doneCount(context: Context) = Step.values().count { isDone(context, it) }
@@ -63,11 +68,19 @@ object Setup {
             Step.OVERLAY -> Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg)
             Step.BRIGHTNESS -> Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, pkg)
             Step.BACKGROUND -> Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg)
+            Step.ASSISTANT -> Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
+            Step.LOCK_WINDOW -> if (Build.VERSION.SDK_INT >= 34) Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg)
+                else Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg)
         }
         try {
             activity.startActivity(intent)
         } catch (e: Exception) {
-            activity.startActivity(Intent(Settings.ACTION_SETTINGS))
+            // Some phones keep "Default apps" elsewhere.
+            try {
+                activity.startActivity(Intent(if (step == Step.ASSISTANT) Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS else Settings.ACTION_SETTINGS))
+            } catch (e2: Exception) {
+                activity.startActivity(Intent(Settings.ACTION_SETTINGS))
+            }
         }
     }
 
