@@ -108,13 +108,24 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 .show()
         }
-        switchRow(card, "Reply in Hinglish", "Voxa understands Urdu, Hindi and English, and always answers in Roman Urdu/Hindi (\"Theek hai sir, kar diya\").", prefs.replyHinglish) { on ->
-            prefs.replyHinglish = on
-            rebuild()
-            true
+        val styles = listOf(
+            Prefs.STYLE_HINGLISH to "Hinglish — Roman Urdu (\"Theek hai sir, kar diya\")",
+            Prefs.STYLE_URDU to "Urdu — اردو (\"ٹھیک ہے سر، کر دیا\")",
+            Prefs.STYLE_SAME to "Same as I speak"
+        )
+        val style = styles.firstOrNull { it.first == prefs.replyStyle } ?: styles[0]
+        row(card, "Voxa answers in", "She understands Urdu, Hindi and English whichever you pick.", value = style.second.substringBefore(" —")) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Voxa answers in")
+                .setSingleChoiceItems(styles.map { it.second }.toTypedArray(), styles.indexOf(style)) { dialog, which ->
+                    prefs.replyStyle = styles[which].first
+                    dialog.dismiss()
+                    rebuild()
+                }
+                .show()
         }
-        if (!prefs.replyHinglish && !prefs.language.startsWith("en")) {
-            val wantUrdu = prefs.language.startsWith("ur") || prefs.language == Lang.AUTO
+        if (!prefs.replyHinglish && (prefs.replyStyle == Prefs.STYLE_URDU || !prefs.language.startsWith("en"))) {
+            val wantUrdu = prefs.replyStyle == Prefs.STYLE_URDU || prefs.language.startsWith("ur") || prefs.language == Lang.AUTO
             val hasVoice = if (wantUrdu) (urduVoice == true || hindiVoice == true) else hindiVoice == true
             val subtitle = when {
                 hindiVoice == null -> "Checking the phone's voices…"
@@ -139,31 +150,75 @@ class SettingsActivity : AppCompatActivity() {
             previewSpeaker // start the phone's speech engine early so its voices are ready to list
         }
         val card = section("VOICE")
-        val human = prefs.voiceEngine == Prefs.VOICE_ELEVEN
+        val engine = prefs.voiceEngine
+        val human = engine == Prefs.VOICE_ELEVEN
+        val groq = engine == Prefs.VOICE_GROQ
         row(
             card, "Voxa's voice",
-            if (human) "Human-like ElevenLabs voice. Needs internet; falls back to the phone voice without it."
-            else "The phone's own voice: free and offline. Switch to Human-like for a natural voice.",
-            value = if (human) "Human-like" else "Phone"
+            when {
+                groq -> "Natural Groq voice with your Groq key. It speaks English letters (Hinglish, English); Urdu script is read by the phone's Urdu voice."
+                human -> "Human-like ElevenLabs voice. Needs internet; falls back to the phone voice without it."
+                else -> "The phone's own voice: free, offline, and the one that speaks Urdu script."
+            },
+            value = when {
+                groq -> "Groq"
+                human -> "ElevenLabs"
+                else -> "Phone"
+            }
         ) {
-            val labels = arrayOf("Human-like · ElevenLabs (most natural)", "Phone voice · free, offline")
+            val options = listOf(
+                Prefs.VOICE_GROQ to "Natural · Groq (your Groq key)",
+                Prefs.VOICE_ELEVEN to "Human-like · ElevenLabs (own key)",
+                Prefs.VOICE_PHONE to "Phone voice · free, offline, Urdu"
+            )
             MaterialAlertDialogBuilder(this)
                 .setTitle("Voxa's voice")
-                .setSingleChoiceItems(labels, if (human) 0 else 1) { dialog, which ->
+                .setSingleChoiceItems(options.map { it.second }.toTypedArray(), options.indexOfFirst { it.first == engine }) { dialog, which ->
                     dialog.dismiss()
-                    if (which == 1) {
-                        prefs.voiceEngine = Prefs.VOICE_PHONE
-                        rebuild()
-                    } else if (prefs.elevenKey.isBlank()) {
-                        askElevenKey { prefs.voiceEngine = Prefs.VOICE_ELEVEN }
-                    } else {
-                        prefs.voiceEngine = Prefs.VOICE_ELEVEN
-                        rebuild()
+                    when (options[which].first) {
+                        Prefs.VOICE_PHONE -> {
+                            prefs.voiceEngine = Prefs.VOICE_PHONE
+                            rebuild()
+                        }
+                        Prefs.VOICE_GROQ -> if (prefs.groqKey.isBlank()) {
+                            keyDialog("Groq API key", "gsk_…", "") { key ->
+                                if (key.isNotBlank()) {
+                                    prefs.groqKey = key
+                                    prefs.voiceEngine = Prefs.VOICE_GROQ
+                                }
+                                rebuild()
+                            }
+                        } else {
+                            prefs.voiceEngine = Prefs.VOICE_GROQ
+                            speechMessage = null
+                            rebuild()
+                        }
+                        else -> if (prefs.elevenKey.isBlank()) {
+                            askElevenKey { prefs.voiceEngine = Prefs.VOICE_ELEVEN }
+                        } else {
+                            prefs.voiceEngine = Prefs.VOICE_ELEVEN
+                            rebuild()
+                        }
                     }
                 }
                 .show()
         }
-        if (human) {
+        if (groq) {
+            val current = GroqClient.FEMALE_VOICES.firstOrNull { it.first == prefs.groqVoice }?.second?.substringBefore(" ·") ?: prefs.groqVoice
+            row(card, "Female voice", "Autumn, Diana or Hannah — each one plays a sample.", value = current) {
+                val voices = GroqClient.FEMALE_VOICES
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Choose Voxa's voice")
+                    .setSingleChoiceItems(voices.map { it.second }.toTypedArray(), voices.indexOfFirst { it.first == prefs.groqVoice }) { _, which ->
+                        prefs.groqVoice = voices[which].first
+                        previewSpeaker.stopSilently()
+                        previewSpeaker.speak(sampleLine())
+                    }
+                    .setPositiveButton("Use this voice") { _, _ -> rebuild() }
+                    .setOnDismissListener { previewSpeaker.stopSilently(); rebuild() }
+                    .show()
+            }
+        } else         if (human) {
             row(card, "ElevenLabs API key", "Free at elevenlabs.io → your profile → API keys. Kept only on this phone.", value = mask(prefs.elevenKey)) {
                 askElevenKey {}
             }
@@ -186,9 +241,12 @@ class SettingsActivity : AppCompatActivity() {
         row(card, "Test the voice", speechMessage ?: "Hear how Voxa sounds now.") { testSpeech() }
     }
 
-    private fun sampleLine(): String =
-        if (prefs.replyHinglish) "Assalam o Alaikum, main Voxa hoon. Bataiye, aaj main aapki kya madad karun?"
-        else "Hello, I'm Voxa. How can I help you today?"
+    private fun sampleLine(): String = when {
+        // Groq's voice reads English letters, so it always gets the Roman sample.
+        prefs.replyHinglish || prefs.voiceEngine == Prefs.VOICE_GROQ -> "Assalam o Alaikum, main Voxa hoon. Bataiye, aaj main aapki kya madad karun?"
+        Lang.mode(prefs) == "ur" -> "السلام علیکم، میں ووکسا ہوں۔ بتائیے، آج میں آپ کی کیا مدد کروں؟"
+        else -> "Hello, I'm Voxa. How can I help you today?"
+    }
 
     private fun askElevenKey(after: () -> Unit) {
         keyDialog("ElevenLabs API key", "sk_…", prefs.elevenKey) { key ->
@@ -274,10 +332,24 @@ class SettingsActivity : AppCompatActivity() {
             previewSpeaker.speak(sampleLine())
             return
         }
-        speechMessage = "Contacting ElevenLabs…"
+        val groqVoice = prefs.voiceEngine == Prefs.VOICE_GROQ
+        speechMessage = if (groqVoice) "Contacting Groq…" else "Contacting ElevenLabs…"
         rebuild()
         Thread {
-            val error = try {
+            val error = if (groqVoice) try {
+                GroqClient(prefs).speech("OK", prefs.groqVoice)
+                null
+            } catch (e: GroqClient.GroqException) {
+                when {
+                    e.code == 401 -> "Groq rejected the key. Check it in AI Brain."
+                    e.message.orEmpty().contains("terms", true) ->
+                        "Groq needs you to accept the voice model's terms once: open console.groq.com, Playground, pick \"orpheus-v1-english\" and accept."
+                    e.code == 429 -> "Groq's voice limit is reached for now. Try again later."
+                    else -> "Groq voice error ${e.code}. ${e.message.orEmpty()}"
+                }
+            } catch (e: Exception) {
+                "Couldn't reach Groq. Check the internet."
+            } else try {
                 ElevenLabs.speech(prefs.elevenKey, prefs.elevenVoiceId, "OK")
                 null
             } catch (e: ElevenLabs.ElevenException) {
@@ -286,7 +358,7 @@ class SettingsActivity : AppCompatActivity() {
                 "Couldn't reach ElevenLabs. Check the internet."
             }
             runOnUiThread {
-                speechMessage = error ?: "Connected ✓  ${prefs.elevenVoiceName} is speaking."
+                speechMessage = error ?: "Connected ✓  ${if (groqVoice) prefs.groqVoice.replaceFirstChar { it.uppercase() } else prefs.elevenVoiceName} is speaking."
                 rebuild()
                 previewSpeaker.speak(sampleLine())
             }
@@ -488,7 +560,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Voxa 4.4"
+        tv.text = "Voxa 4.5"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER

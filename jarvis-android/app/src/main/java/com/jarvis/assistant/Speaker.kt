@@ -167,43 +167,116 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
     // ---------------------------------------------------------------- human voice (ElevenLabs)
 
     private fun speakHuman(text: String, onDone: (() -> Unit)?) {
+        val groq = prefs.voiceEngine == Prefs.VOICE_GROQ
+        // Groq's voice reads English letters only; Urdu or Hindi script goes to the phone voice.
+        if (groq && !Translit.isLatin(text)) {
+            speakPhone(text, onDone)
+            return
+        }
         val id = "jarvis_${counter++}"
         if (onDone != null) synchronized(callbacks) { callbacks[id] = onDone }
         val myGeneration = generation
         // Safety net: a slow network must never leave Voxa stuck.
-        main.postDelayed({ finish(id) }, 15_000L + text.length * 120L)
-        val key = prefs.elevenKey
-        val voiceId = prefs.elevenVoiceId
+        main.postDelayed({ finish(id) }, 20_000L + text.length * 150L)
+        // Long answers go in pieces: the first sentence plays while the next ones are made.
+        val pieces = if (groq) splitForSpeech(text, 190) else listOf(text)
+        val voiceKey = if (groq) "groq_${prefs.groqVoice}" else prefs.elevenVoiceId
         Thread {
-            val file = try {
-                clip(key, voiceId, text)
-            } catch (e: Exception) {
-                null
-            }
-            main.post {
-                if (myGeneration != generation) return@post
-                if (file == null) {
-                    // No internet or a key problem: say it with the phone's voice instead.
-                    speakPhone(text, synchronized(callbacks) { callbacks.remove(id) }, id)
-                    return@post
+            for ((i, piece) in pieces.withIndex()) {
+                if (myGeneration != generation) return@Thread
+                val file = try {
+                    clip(voiceKey, piece, "${id}_$i") {
+                        if (groq) GroqClient(prefs).speech(piece, prefs.groqVoice) else ElevenLabs.speech(prefs.elevenKey, prefs.elevenVoiceId, piece)
+                    }
+                } catch (e: Exception) {
+                    null
                 }
-                play(file, id)
+                if (file == null) {
+                    // No internet or a key problem: say the rest with the phone's voice instead.
+                    val rest = pieces.drop(i).joinToString(" ")
+                    main.post {
+                        if (myGeneration != generation) return@post
+                        afterClips(id) { speakPhone(rest, synchronized(callbacks) { callbacks.remove(id) }, id) }
+                    }
+                    return@Thread
+                }
+                val last = i == pieces.lastIndex
+                main.post { if (myGeneration == generation) enqueue(file, last, id) }
             }
         }.start()
     }
 
-    private fun clip(key: String, voiceId: String, text: String): File {
+    /** Sentences joined up to [max] characters, so each request stays small and quick. */
+    private fun splitForSpeech(text: String, max: Int): List<String> {
+        val sentences = text.trim().split(Regex("(?<=[.!?।؟])\\s+")).filter { it.isNotBlank() }
+        val out = ArrayList<String>()
+        val current = StringBuilder()
+        fun flush() {
+            if (current.isNotBlank()) out.add(current.toString().trim())
+            current.clear()
+        }
+        for (sentence in sentences) {
+            var rest = sentence
+            while (rest.length > max) {
+                // A very long sentence: break at a comma or space.
+                val cut = rest.lastIndexOf(',', max).takeIf { it > max / 2 } ?: rest.lastIndexOf(' ', max).takeIf { it > 0 } ?: max
+                flush()
+                out.add(rest.substring(0, cut + 1).trim())
+                rest = rest.substring(cut + 1)
+            }
+            if (current.length + rest.length + 1 > max) flush()
+            current.append(rest).append(' ')
+        }
+        flush()
+        return out.ifEmpty { listOf(text) }
+    }
+
+    private fun clip(voiceKey: String, text: String, tempName: String, fetch: () -> ByteArray): File {
         val cacheable = text.length <= CACHE_MAX_CHARS
         val dir = File(app.cacheDir, "voice").apply { mkdirs() }
-        val cached = File(dir, "${voiceId}_${text.hashCode().toUInt()}.mp3")
+        val cached = File(dir, "${voiceKey}_${text.hashCode().toUInt()}.audio")
         if (cacheable && cached.exists() && cached.length() > 0) return cached
-        val audio = ElevenLabs.speech(key, voiceId, text)
-        val out = if (cacheable) cached else File(dir, "last.mp3")
+        val audio = fetch()
+        val out = if (cacheable) cached else File(dir, "$tempName.tmp")
         out.writeBytes(audio)
         return out
     }
 
-    private fun play(file: File, id: String) {
+    /** Clips of the current answer waiting to play, and whether each is the last one. */
+    private val clips = ArrayDeque<Pair<File, Boolean>>()
+    private var playingClip = false
+    private var whenClipsEnd: (() -> Unit)? = null
+
+    private fun enqueue(file: File, last: Boolean, id: String) {
+        clips.addLast(file to last)
+        if (!playingClip) playNext(id)
+    }
+
+    private fun playNext(id: String) {
+        val next = clips.removeFirstOrNull()
+        if (next == null) {
+            playingClip = false
+            whenClipsEnd?.let { whenClipsEnd = null; it() }
+            return
+        }
+        playingClip = true
+        play(next.first) {
+            if (next.first.name.endsWith(".tmp")) next.first.delete()
+            if (next.second) {
+                playingClip = false
+                finish(id)
+            } else {
+                playNext(id)
+            }
+        }
+    }
+
+    /** Runs [block] once the clips already queued have played (straight away if none are). */
+    private fun afterClips(id: String, block: () -> Unit) {
+        if (playingClip) whenClipsEnd = block else block()
+    }
+
+    private fun play(file: File, onEnd: () -> Unit) {
         releasePlayer()
         val mp = MediaPlayer()
         player = mp
@@ -214,18 +287,18 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             mp.setDataSource(file.absolutePath)
             mp.setOnCompletionListener {
                 releasePlayer()
-                finish(id)
+                onEnd()
             }
             mp.setOnErrorListener { _, _, _ ->
                 releasePlayer()
-                finish(id)
+                onEnd()
                 true
             }
             mp.prepare()
             mp.start()
         } catch (e: Exception) {
             releasePlayer()
-            finish(id)
+            onEnd()
         }
     }
 
@@ -249,6 +322,9 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         generation++
         synchronized(callbacks) { callbacks.clear() }
         queued.clear()
+        clips.clear()
+        playingClip = false
+        whenClipsEnd = null
         releasePlayer()
         if (ready) tts.stop()
     }

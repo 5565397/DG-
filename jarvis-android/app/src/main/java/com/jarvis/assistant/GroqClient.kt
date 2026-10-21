@@ -17,6 +17,9 @@ class GroqClient(private val prefs: Prefs) {
 
     companion object {
         private const val BASE = "https://api.groq.com/openai/v1"
+        const val TTS_MODEL = "canopylabs/orpheus-v1-english"
+        /** Groq's female voices for [TTS_MODEL] (name, description). */
+        val FEMALE_VOICES = listOf("autumn" to "Autumn · warm", "diana" to "Diana · clear", "hannah" to "Hannah · friendly")
         private const val MODEL_CACHE_MS = 24 * 3600_000L
 
         /** Best general chat models first. */
@@ -208,6 +211,39 @@ class GroqClient(private val prefs: Prefs) {
         val body = request("POST", "$BASE/chat/completions", payload.toString())
         val choice = JSONObject(body).optJSONArray("choices")?.optJSONObject(0)
         return choice?.optJSONObject("message")?.optString("content").orEmpty()
+    }
+
+    /**
+     * Speech from Groq's text-to-speech (Canopy Labs Orpheus): a natural, human-sounding voice.
+     * Returns WAV audio. Keep [text] short (a sentence or two); longer replies are sent in pieces.
+     */
+    fun speech(text: String, voice: String): ByteArray {
+        val key = prefs.groqKey.trim()
+        if (key.isEmpty()) throw GroqException(401, "No Groq key")
+        val body = JSONObject().put("model", TTS_MODEL).put("voice", voice).put("input", text).put("response_format", "wav")
+        val conn = URL("$BASE/audio/speech").openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 60_000
+            conn.setRequestProperty("Authorization", "Bearer $key")
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            conn.doOutput = true
+            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                val text2 = conn.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                val message = try {
+                    JSONObject(text2).optJSONObject("error")?.optString("message").orEmpty()
+                } catch (e: Exception) {
+                    text2.take(200)
+                }
+                throw GroqException(code, message.ifBlank { "HTTP $code" })
+            }
+            return conn.inputStream.use { it.readBytes() }
+        } finally {
+            conn.disconnect()
+        }
     }
 
     private fun request(method: String, url: String, json: String?): String {

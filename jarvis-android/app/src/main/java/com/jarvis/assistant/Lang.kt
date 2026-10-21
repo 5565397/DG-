@@ -38,6 +38,8 @@ object Lang {
     /** "en", "hi", "ur" or [HINGLISH] — the language Voxa should talk in right now. */
     fun mode(prefs: Prefs): String {
         if (prefs.replyHinglish) return HINGLISH
+        // Urdu chosen: always Urdu script, spoken with the Urdu voice.
+        if (prefs.replyStyle == Prefs.STYLE_URDU) return "ur"
         val wanted = when {
             prefs.language == AUTO -> lastInput
             prefs.language.startsWith("hi") -> "hi"

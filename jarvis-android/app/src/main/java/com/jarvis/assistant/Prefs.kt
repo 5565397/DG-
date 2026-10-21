@@ -27,10 +27,17 @@ class Prefs(context: Context) {
         get() = sp.getString("title", "sir") ?: "sir"
         set(v) = sp.edit().putString("title", v).apply()
 
-    /** Voxa understands Urdu/Hindi/English, but answers in Hinglish (Roman letters) when this is on. */
+    /**
+     * How Voxa writes and speaks its answers: "hinglish" (Roman Urdu), "urdu" (Urdu script, Urdu voice)
+     * or "same" (the language you spoke). She understands Urdu, Hindi and English either way.
+     */
+    var replyStyle: String
+        get() = sp.getString("reply_style", null) ?: if (sp.getBoolean("reply_hinglish", true)) STYLE_HINGLISH else STYLE_SAME
+        set(v) = sp.edit().putString("reply_style", v).apply()
+
     var replyHinglish: Boolean
-        get() = sp.getBoolean("reply_hinglish", true)
-        set(v) = sp.edit().putBoolean("reply_hinglish", v).apply()
+        get() = replyStyle == STYLE_HINGLISH
+        set(v) { replyStyle = if (v) STYLE_HINGLISH else STYLE_SAME }
 
     /** The wake word was left on; start it again after a reboot or restart. */
     var wakeEnabled: Boolean
@@ -47,9 +54,10 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("banking_pause", true)
         set(v) = sp.edit().putBoolean("banking_pause", v).apply()
 
-    /** "phone" (Android text-to-speech) or "eleven" (ElevenLabs, human-like). */
+    /** "phone" (Android text-to-speech), "groq" (Groq's natural voice) or "eleven" (ElevenLabs). */
     var voiceEngine: String
-        get() = sp.getString("voice_engine", VOICE_PHONE) ?: VOICE_PHONE
+        // With a Groq key and no choice made yet, use Groq's natural voice.
+        get() = sp.getString("voice_engine", null) ?: if (groqKey.isNotBlank()) VOICE_GROQ else VOICE_PHONE
         set(v) = sp.edit().putString("voice_engine", v).apply()
 
     /** ElevenLabs API key (elevenlabs.io). Stored only on this phone. */
@@ -70,7 +78,13 @@ class Prefs(context: Context) {
         get() = sp.getString("phone_voice", "") ?: ""
         set(v) = sp.edit().putString("phone_voice", v).apply()
 
-    val humanVoice: Boolean get() = voiceEngine == VOICE_ELEVEN && elevenKey.isNotBlank()
+    /** Groq voice name for its text-to-speech (one of GroqClient.FEMALE_VOICES). */
+    var groqVoice: String
+        get() = sp.getString("groq_voice", "autumn") ?: "autumn"
+        set(v) = sp.edit().putString("groq_voice", v).apply()
+
+    val humanVoice: Boolean
+        get() = (voiceEngine == VOICE_ELEVEN && elevenKey.isNotBlank()) || (voiceEngine == VOICE_GROQ && groqKey.isNotBlank())
 
     var countryCode: String
         get() = sp.getString("country_code", "") ?: ""
@@ -155,6 +169,10 @@ class Prefs(context: Context) {
         const val ENGINE_GROQ = "groq"
         const val ENGINE_CLAUDE = "claude"
         const val VOICE_PHONE = "phone"
+        const val STYLE_HINGLISH = "hinglish"
+        const val STYLE_URDU = "urdu"
+        const val STYLE_SAME = "same"
         const val VOICE_ELEVEN = "eleven"
+        const val VOICE_GROQ = "groq"
     }
 }
