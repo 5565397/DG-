@@ -31,6 +31,10 @@ class SettingsActivity : AppCompatActivity() {
     private var voiceBusy = false
     private var voiceMessage: String? = null
     private var aiMessage: String? = null
+    private var voiceMessage: String? = null
+    /** For trying voices here; the real Voxa voice lives in the background service. */
+    private val previewSpeaker by lazy { Speaker(this) }
+    private var previewStarted = false
     private var hindiVoice: Boolean? = null
     private var urduVoice: Boolean? = null
 
@@ -60,6 +64,7 @@ class SettingsActivity : AppCompatActivity() {
         content.removeAllViews()
         buildSetup()
         buildLanguage()
+        buildVoice()
         buildVoiceLock()
         buildAi()
         buildPersonal()
@@ -126,6 +131,177 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun buildVoice() {
+        if (!previewStarted) {
+            previewStarted = true
+            previewSpeaker // start the phone's speech engine early so its voices are ready to list
+        }
+        val card = section("VOICE")
+        val human = prefs.voiceEngine == Prefs.VOICE_ELEVEN
+        row(
+            card, "Voxa's voice",
+            if (human) "Human-like ElevenLabs voice. Needs internet; falls back to the phone voice without it."
+            else "The phone's own voice: free and offline. Switch to Human-like for a natural voice.",
+            value = if (human) "Human-like" else "Phone"
+        ) {
+            val labels = arrayOf("Human-like · ElevenLabs (most natural)", "Phone voice · free, offline")
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Voxa's voice")
+                .setSingleChoiceItems(labels, if (human) 0 else 1) { dialog, which ->
+                    dialog.dismiss()
+                    if (which == 1) {
+                        prefs.voiceEngine = Prefs.VOICE_PHONE
+                        rebuild()
+                    } else if (prefs.elevenKey.isBlank()) {
+                        askElevenKey { prefs.voiceEngine = Prefs.VOICE_ELEVEN }
+                    } else {
+                        prefs.voiceEngine = Prefs.VOICE_ELEVEN
+                        rebuild()
+                    }
+                }
+                .show()
+        }
+        if (human) {
+            row(card, "ElevenLabs API key", "Free at elevenlabs.io → your profile → API keys. Kept only on this phone.", value = mask(prefs.elevenKey)) {
+                askElevenKey {}
+            }
+            row(card, "Female voice", "Pick from your ElevenLabs voices; each one plays a sample.", value = prefs.elevenVoiceName) {
+                pickElevenVoice()
+            }
+        } else {
+            val chosen = prefs.phoneVoice
+            row(card, "Phone voice", "Tap a voice to hear it, then keep the most natural one.", value = if (chosen.isBlank()) "Best" else "Custom") {
+                pickPhoneVoice()
+            }
+            row(card, "Get better phone voices", "Install the high-quality voices from \"Speech Services by Google\".") {
+                try {
+                    startActivity(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA))
+                } catch (e: Exception) {
+                    startActivity(Intent("com.android.settings.TTS_SETTINGS"))
+                }
+            }
+        }
+        row(card, "Test the voice", voiceMessage ?: "Hear how Voxa sounds now.") { testVoice() }
+    }
+
+    private fun sampleLine(): String =
+        if (prefs.replyHinglish) "Assalam o Alaikum, main Voxa hoon. Bataiye, aaj main aapki kya madad karun?"
+        else "Hello, I'm Voxa. How can I help you today?"
+
+    private fun askElevenKey(after: () -> Unit) {
+        keyDialog("ElevenLabs API key", "sk_…", prefs.elevenKey) { key ->
+            if (key.isNotBlank()) {
+                prefs.elevenKey = key
+                after()
+                voiceMessage = null
+            }
+            rebuild()
+        }
+    }
+
+    private fun pickElevenVoice() {
+        val key = prefs.elevenKey
+        if (key.isBlank()) {
+            askElevenKey {}
+            return
+        }
+        toast("Loading your ElevenLabs voices…")
+        Thread {
+            val voices = try {
+                ElevenLabs.voices(key)
+            } catch (e: ElevenLabs.ElevenException) {
+                runOnUiThread { toast(elevenError(e)) }
+                return@Thread
+            } catch (e: Exception) {
+                runOnUiThread { toast("Couldn't reach ElevenLabs. Check the internet.") }
+                return@Thread
+            }
+            runOnUiThread {
+                if (voices.isEmpty()) {
+                    toast("No voices on this ElevenLabs account.")
+                    return@runOnUiThread
+                }
+                val labels = voices.map { v -> if (v.description.isBlank()) v.name else "${v.name} — ${v.description}" }.toTypedArray()
+                val current = voices.indexOfFirst { it.id == prefs.elevenVoiceId }
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Choose Voxa's voice")
+                    .setSingleChoiceItems(labels, current) { _, which ->
+                        // Stay open: each tap plays a sample, "Use this voice" keeps it.
+                        prefs.elevenVoiceId = voices[which].id
+                        prefs.elevenVoiceName = voices[which].name
+                        previewSpeaker.stopSilently()
+                        previewSpeaker.speak(sampleLine())
+                    }
+                    .setPositiveButton("Use this voice") { _, _ -> rebuild() }
+                    .setOnDismissListener { previewSpeaker.stopSilently(); rebuild() }
+                    .show()
+            }
+        }.start()
+    }
+
+    private fun pickPhoneVoice() {
+        val voices = previewSpeaker.voiceChoices()
+        if (voices.isEmpty()) {
+            toast("The phone's voices are still loading — try again in a moment.")
+            return
+        }
+        val labels = (listOf("Automatic — the best one") + voices.mapIndexed { i, v ->
+            val quality = when {
+                v.quality >= android.speech.tts.Voice.QUALITY_VERY_HIGH -> "very high quality"
+                v.quality >= android.speech.tts.Voice.QUALITY_HIGH -> "high quality"
+                else -> "standard"
+            }
+            "Voice ${i + 1} · ${v.locale.displayName} · $quality${if (v.isNetworkConnectionRequired) " · online" else ""}"
+        }).toTypedArray()
+        val current = voices.indexOfFirst { it.name == prefs.phoneVoice } + 1
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Phone voice")
+            .setSingleChoiceItems(labels, current) { _, which ->
+                prefs.phoneVoice = if (which == 0) "" else voices[which - 1].name
+                previewSpeaker.stopSilently()
+                previewSpeaker.speak(sampleLine())
+            }
+            .setPositiveButton("Use this voice") { _, _ -> rebuild() }
+            .setOnDismissListener { previewSpeaker.stopSilently(); rebuild() }
+            .show()
+    }
+
+    private fun testVoice() {
+        if (!prefs.humanVoice) {
+            voiceMessage = null
+            previewSpeaker.speak(sampleLine())
+            return
+        }
+        voiceMessage = "Contacting ElevenLabs…"
+        rebuild()
+        Thread {
+            val error = try {
+                ElevenLabs.speech(prefs.elevenKey, prefs.elevenVoiceId, "OK")
+                null
+            } catch (e: ElevenLabs.ElevenException) {
+                elevenError(e)
+            } catch (e: Exception) {
+                "Couldn't reach ElevenLabs. Check the internet."
+            }
+            runOnUiThread {
+                voiceMessage = error ?: "Connected ✓  ${prefs.elevenVoiceName} is speaking."
+                rebuild()
+                previewSpeaker.speak(sampleLine())
+            }
+        }.start()
+    }
+
+    private fun elevenError(e: ElevenLabs.ElevenException) = when (e.code) {
+        401 -> "ElevenLabs rejected the key. Copy it again from elevenlabs.io."
+        402, 429 -> "ElevenLabs limit reached: ${e.message.orEmpty().ifBlank { "no characters left this month" }}"
+        else -> "ElevenLabs error ${e.code}. ${e.message.orEmpty()}"
+    }
+
+    override fun onDestroy() {
+        if (previewStarted) previewSpeaker.shutdown()
+        super.onDestroy()
     }
 
     private fun buildVoiceLock() {
@@ -312,7 +488,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Voxa 4.3"
+        tv.text = "Voxa 4.4"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER

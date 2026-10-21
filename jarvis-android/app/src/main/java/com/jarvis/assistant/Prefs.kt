@@ -47,6 +47,31 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("banking_pause", true)
         set(v) = sp.edit().putBoolean("banking_pause", v).apply()
 
+    /** "phone" (Android text-to-speech) or "eleven" (ElevenLabs, human-like). */
+    var voiceEngine: String
+        get() = sp.getString("voice_engine", VOICE_PHONE) ?: VOICE_PHONE
+        set(v) = sp.edit().putString("voice_engine", v).apply()
+
+    /** ElevenLabs API key (elevenlabs.io). Stored only on this phone. */
+    var elevenKey: String
+        get() = sp.getString("eleven_key", "") ?: ""
+        set(v) = sp.edit().putString("eleven_key", v).apply()
+
+    var elevenVoiceId: String
+        get() = sp.getString("eleven_voice_id", ElevenLabs.DEFAULT_VOICE_ID) ?: ElevenLabs.DEFAULT_VOICE_ID
+        set(v) = sp.edit().putString("eleven_voice_id", v).apply()
+
+    var elevenVoiceName: String
+        get() = sp.getString("eleven_voice_name", ElevenLabs.DEFAULT_VOICE_NAME) ?: ElevenLabs.DEFAULT_VOICE_NAME
+        set(v) = sp.edit().putString("eleven_voice_name", v).apply()
+
+    /** The phone voice the user picked (Android voice name); blank = the best one automatically. */
+    var phoneVoice: String
+        get() = sp.getString("phone_voice", "") ?: ""
+        set(v) = sp.edit().putString("phone_voice", v).apply()
+
+    val humanVoice: Boolean get() = voiceEngine == VOICE_ELEVEN && elevenKey.isNotBlank()
+
     var countryCode: String
         get() = sp.getString("country_code", "") ?: ""
         set(v) = sp.edit().putString("country_code", v).apply()
@@ -129,5 +154,7 @@ class Prefs(context: Context) {
         const val ENGINE_OFFLINE = "offline"
         const val ENGINE_GROQ = "groq"
         const val ENGINE_CLAUDE = "claude"
+        const val VOICE_PHONE = "phone"
+        const val VOICE_ELEVEN = "eleven"
     }
 }
