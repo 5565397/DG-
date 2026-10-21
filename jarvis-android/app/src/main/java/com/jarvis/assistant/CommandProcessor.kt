@@ -665,10 +665,16 @@ class CommandProcessor(private val ctx: Context) {
         }
         val s = a11y
         return if (s != null) {
-            s.clickWhenAppears("$pkg:id/send", "Send")
+            s.sendWhatsapp(pkg, text, { sent ->
+                ChatStore.add(ctx, ChatStore.Role.NOTE, if (sent) "WhatsApp message sent to $name" else "Couldn't press WhatsApp's send button — please tap send")
+            })
             Result(L("Sending your WhatsApp message to $name.", "$name को व्हाट्सएप मैसेज भेज रही हूँ।", "$name کو واٹس ایپ میسج بھیج رہی ہوں۔"))
         } else {
-            Result(L("Message ready for $name. Tap send, $sir.", "$name के लिए मैसेज तैयार है। भेज दीजिए।", "$name کے لیے میسج تیار ہے۔ بھیج دیجیے۔"))
+            Result(L(
+                "Message ready for $name. Turn on Voxa's accessibility access so I can press send myself.",
+                "$name के लिए मैसेज तैयार है। खुद भेजने के लिए Voxa की Accessibility चालू कीजिए।",
+                "$name کے لیے میسج تیار ہے۔ خود بھیجنے کے لیے Voxa کی ایکسیسبلٹی آن کیجیے۔"
+            ))
         }
     }
 

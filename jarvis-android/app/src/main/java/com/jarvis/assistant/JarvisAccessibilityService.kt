@@ -222,6 +222,72 @@ class JarvisAccessibilityService : AccessibilityService() {
         main.postDelayed(task, 1500)
     }
 
+    /**
+     * Presses WhatsApp's send button once the chat is open with [text] in the box.
+     * Waits for the WhatsApp window itself (not whatever was on screen before), fills the box if WhatsApp
+     * didn't, and checks the box empties — tapping again by position if the first press didn't take.
+     * [onDone] gets true when the message left the box.
+     */
+    fun sendWhatsapp(pkg: String, text: String, onDone: (Boolean) -> Unit, timeoutMs: Long = 20000) {
+        val start = SystemClock.uptimeMillis()
+        val deadline = start + timeoutMs
+        var pressed = 0
+        val task = object : Runnable {
+            override fun run() {
+                val root = roots().firstOrNull { it.packageName?.toString() == pkg }
+                val entry = root?.findAccessibilityNodeInfosByViewId("$pkg:id/entry")?.firstOrNull()
+                if (root != null && entry != null) {
+                    val current = entry.text?.toString().orEmpty()
+                    val hint = entry.hintText?.toString().orEmpty()
+                    val empty = current.isBlank() || (hint.isNotEmpty() && current == hint)
+                    when {
+                        // Box emptied after we pressed send: the message went.
+                        empty && pressed > 0 -> return onDone(true)
+                        // Give WhatsApp time to switch to the new chat and fill the box itself first.
+                        empty && SystemClock.uptimeMillis() - start > 4000 -> entry.performAction(
+                            AccessibilityNodeInfo.ACTION_SET_TEXT,
+                            Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+                        )
+                        empty -> Unit
+                        else -> sendButton(root, pkg)?.let { button ->
+                            // First a normal click; if the text is still there next time, tap the button's position.
+                            if (pressed % 2 == 0) clickNode(button) else tapCenter(button)
+                            pressed++
+                        }
+                    }
+                }
+                if (SystemClock.uptimeMillis() < deadline) main.postDelayed(this, 700) else onDone(false)
+            }
+        }
+        main.postDelayed(task, 1200)
+    }
+
+    private val SEND_LABELS = listOf("send", "بھیجیں", "بھیجو", "ارسال", "भेजें", "भेजो", "enviar", "envoyer", "senden", "invia", "gönder")
+
+    private fun sendButton(root: AccessibilityNodeInfo, pkg: String): AccessibilityNodeInfo? {
+        for (id in listOf("$pkg:id/send", "$pkg:id/send_container", "$pkg:id/conversation_send")) {
+            root.findAccessibilityNodeInfosByViewId(id)?.firstOrNull { it.isVisibleToUser }?.let { return it }
+        }
+        var found: AccessibilityNodeInfo? = null
+        walk(root) { n ->
+            val id = n.viewIdResourceName.orEmpty()
+            val desc = n.contentDescription?.toString()?.lowercase(Locale.ROOT)?.trim().orEmpty()
+            if (n.isVisibleToUser && (id.endsWith("/send") || desc in SEND_LABELS)) {
+                found = n
+                true
+            } else {
+                false
+            }
+        }
+        return found
+    }
+
+    private fun tapCenter(node: AccessibilityNodeInfo): Boolean {
+        val r = Rect()
+        node.getBoundsInScreen(r)
+        return !r.isEmpty && tap(r.exactCenterX(), r.exactCenterY())
+    }
+
     /** Takes a screenshot and returns it as base64 JPEG (null if unavailable). Android 11+. */
     fun captureScreen(onResult: (String?) -> Unit) {
         if (Build.VERSION.SDK_INT < 30) {
