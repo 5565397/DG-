@@ -31,7 +31,7 @@ class SettingsActivity : AppCompatActivity() {
     private var voiceBusy = false
     private var voiceMessage: String? = null
     private var aiMessage: String? = null
-    private var voiceMessage: String? = null
+    private var speechMessage: String? = null
     /** For trying voices here; the real Voxa voice lives in the background service. */
     private val previewSpeaker by lazy { Speaker(this) }
     private var previewStarted = false
@@ -183,7 +183,7 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
         }
-        row(card, "Test the voice", voiceMessage ?: "Hear how Voxa sounds now.") { testVoice() }
+        row(card, "Test the voice", speechMessage ?: "Hear how Voxa sounds now.") { testSpeech() }
     }
 
     private fun sampleLine(): String =
@@ -195,7 +195,7 @@ class SettingsActivity : AppCompatActivity() {
             if (key.isNotBlank()) {
                 prefs.elevenKey = key
                 after()
-                voiceMessage = null
+                speechMessage = null
             }
             rebuild()
         }
@@ -268,13 +268,13 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun testVoice() {
+    private fun testSpeech() {
         if (!prefs.humanVoice) {
-            voiceMessage = null
+            speechMessage = null
             previewSpeaker.speak(sampleLine())
             return
         }
-        voiceMessage = "Contacting ElevenLabs…"
+        speechMessage = "Contacting ElevenLabs…"
         rebuild()
         Thread {
             val error = try {
@@ -286,7 +286,7 @@ class SettingsActivity : AppCompatActivity() {
                 "Couldn't reach ElevenLabs. Check the internet."
             }
             runOnUiThread {
-                voiceMessage = error ?: "Connected ✓  ${prefs.elevenVoiceName} is speaking."
+                speechMessage = error ?: "Connected ✓  ${prefs.elevenVoiceName} is speaking."
                 rebuild()
                 previewSpeaker.speak(sampleLine())
             }
