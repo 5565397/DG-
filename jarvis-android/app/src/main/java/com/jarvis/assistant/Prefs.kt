@@ -34,7 +34,7 @@ class Prefs(context: Context) {
 
     /** The wake word was left on; start it again after a reboot or restart. */
     var wakeEnabled: Boolean
-        get() = sp.getBoolean("wake_enabled", false)
+        get() = sp.getBoolean("wake_enabled", true)
         set(v) = sp.edit().putBoolean("wake_enabled", v).apply()
 
     /** Show Voxa's own window (also on the lock screen) when you say "Voxa". */

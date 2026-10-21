@@ -308,7 +308,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun footer() {
         val tv = TextView(this)
-        tv.text = "Voxa 4.1"
+        tv.text = "Voxa 4.2"
         tv.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
         tv.textSize = 12f
         tv.textAlignment = View.TEXT_ALIGNMENT_CENTER

@@ -58,6 +58,10 @@ object Recognizers {
      * "default recognizer" points at Voxa's placeholder above and would hear nothing.
      */
     fun create(context: Context): SpeechRecognizer {
+        // The phone's own default recognizer is the most reliable — use it unless it is Voxa's placeholder.
+        val default = Settings.Secure.getString(context.contentResolver, "voice_recognition_service")
+            ?.let { ComponentName.unflattenFromString(it) }
+        if (default != null && default.packageName != context.packageName) return SpeechRecognizer.createSpeechRecognizer(context)
         val google = best(context)
         return if (google != null) SpeechRecognizer.createSpeechRecognizer(context, google) else SpeechRecognizer.createSpeechRecognizer(context)
     }
@@ -68,7 +72,8 @@ object Recognizers {
         val services = context.packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0)
             .map { ComponentName(it.serviceInfo.packageName, it.serviceInfo.name) }
             .filter { it.packageName != context.packageName }
-        return services.firstOrNull { it.packageName == "com.google.android.googlequicksearchbox" }
+        return services.firstOrNull { it.className.endsWith("GoogleRecognitionService") }
+            ?: services.firstOrNull { it.packageName == "com.google.android.googlequicksearchbox" }
             ?: services.firstOrNull { it.packageName.startsWith("com.google") }
             ?: services.firstOrNull()
     }

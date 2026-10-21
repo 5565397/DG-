@@ -181,7 +181,13 @@ class MainActivity : AppCompatActivity(), JarvisBus.Listener {
         val state = if (JarvisService.isRunning) JarvisBus.state else JarvisBus.State.OFFLINE
         onState(state, if (JarvisService.isRunning) JarvisBus.status else "")
         renderChat()
-        renderWake(isWakeOn())
+        // Voxa stays listening for "Voxa" in the background unless you switched it off.
+        if (prefs.wakeEnabled && !JarvisService.isRunning && Setup.hasMic(this)) {
+            send(JarvisService.ACTION_START_WAKE)
+            renderWake(true)
+        } else {
+            renderWake(isWakeOn())
+        }
         renderAi()
         refreshSetupBanner()
     }

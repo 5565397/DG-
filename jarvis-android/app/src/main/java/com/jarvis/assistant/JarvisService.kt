@@ -101,6 +101,11 @@ class JarvisService : Service(), RecognitionListener {
     private var detectedTag: String? = null
     /** Keeps the CPU running while the screen is off, so "Voxa" is still heard on the lock screen. */
     private var cpuLock: android.os.PowerManager.WakeLock? = null
+    /** Quiet retries after a recognizer error, before telling the user anything. */
+    private var silentRetries = 0
+    private var listenStartedAt = 0L
+    /** 0 = full multi-language request; 1 = without language detection; 2 = the phone's own language. */
+    private var langLevel = 0
     /** Woken with "Voxa": until this time, commands don't need the wake word. */
     private var activeUntil = 0L
 
@@ -303,12 +308,18 @@ class JarvisService : Service(), RecognitionListener {
 
     private fun restartListening() {
         stopListening()
-        main.postDelayed({ startListening() }, 150)
+        // Google's recognizer reports "busy" if a new session starts right after a cancel.
+        main.postDelayed({ startListening() }, 350)
     }
 
     private fun recognizerIntent(): Intent {
-        val auto = prefs.language == Lang.AUTO
-        val primary = if (auto) "ur-PK" else prefs.language
+        // Some recognizers reject Urdu or the language-detection extras; step down after such errors.
+        val auto = prefs.language == Lang.AUTO && langLevel == 0
+        val primary = when {
+            langLevel >= 2 -> java.util.Locale.getDefault().toLanguageTag()
+            prefs.language == Lang.AUTO -> "ur-PK"
+            else -> prefs.language
+        }
         val all = arrayListOf("ur-PK", "en-US", "hi-IN")
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -346,6 +357,7 @@ class JarvisService : Service(), RecognitionListener {
             recognizer = it
         }
         listening = true
+        listenStartedAt = System.currentTimeMillis()
         lastPartial = ""
         detectedTag = null
         try {
@@ -430,6 +442,11 @@ class JarvisService : Service(), RecognitionListener {
 
     /** Continue whatever mode we're in after speaking / acting. */
     private fun resume() {
+        // Voxa stays available: after a one-off command, go back to waiting for "Voxa" rather than stopping.
+        if (!wakeMode && prefs.wakeEnabled && Setup.hasMic(this)) {
+            wakeMode = true
+            holdCpu(true)
+        }
         // Still in a conversation started with "Voxa": listen for the next command, no wake word needed.
         if ((wakeMode || VoxaWindowActivity.open) && !awaitingCommand && isActive() && !lastInputTyped) {
             awaitingCommand = true
@@ -490,6 +507,19 @@ class JarvisService : Service(), RecognitionListener {
             error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT ||
             error == SpeechRecognizer.ERROR_AUDIO
         if (hardError) resetRecognizer()
+        // A recognizer hiccup (busy, client, server, language): retry quietly before saying anything.
+        val languageError = error == 12 || error == 13 // ERROR_LANGUAGE_NOT_SUPPORTED / _UNAVAILABLE (API 31+)
+        // "No match" a moment after starting means the recognizer gave up before you could speak.
+        val tooSoon = silence && System.currentTimeMillis() - listenStartedAt < 1500
+        val retryable = hardError || languageError || tooSoon || error == 10 || error == 11
+        if (languageError && langLevel < 2) langLevel++
+        if (awaitingCommand && retryable && silentRetries < 3) {
+            silentRetries++
+            resetRecognizer()
+            main.postDelayed({ startListening() }, 400L * silentRetries)
+            return
+        }
+        silentRetries = 0
         if (awaitingCommand && quietFollowUp) {
             awaitingCommand = false
             quietFollowUp = false
@@ -507,7 +537,9 @@ class JarvisService : Service(), RecognitionListener {
             return
         }
         if (wakeMode) {
-            main.postDelayed({ startListening() }, if (hardError) 1200L else 200L)
+            val broken = hardError || languageError || error == 10 || error == 11
+            if (broken) resetRecognizer()
+            main.postDelayed({ startListening() }, if (broken) 1200L else 250L)
         } else {
             resume()
         }
@@ -533,13 +565,16 @@ class JarvisService : Service(), RecognitionListener {
     }
 
     override fun onReadyForSpeech(params: Bundle?) {}
-    override fun onBeginningOfSpeech() {}
+    override fun onBeginningOfSpeech() {
+        silentRetries = 0
+    }
     override fun onRmsChanged(rmsdB: Float) = JarvisBus.level(rmsdB)
     override fun onBufferReceived(buffer: ByteArray?) {}
     override fun onEvent(eventType: Int, params: Bundle?) {}
 
     /** Final text from the recognizer (several guesses, best first). */
     private fun deliver(heard: List<String>) {
+        silentRetries = 0
         JarvisBus.partial("")
         if (awaitingCommand) {
             awaitingCommand = false
